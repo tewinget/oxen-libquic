@@ -36,10 +36,15 @@ namespace oxen::quic::test
 
         std::atomic<int> data_check{0};
         std::vector<std::promise<bool>> stream_promises{4};
+        std::vector<std::promise<bool>> establish_promises{4};
         std::vector<std::future<bool>> stream_futures{4};
+        std::vector<std::future<bool>> establish_futures{4};
 
         for (int i = 0; i < 4; ++i)
+        {
             stream_futures[i] = stream_promises[i].get_future();
+            establish_futures[i] = establish_promises[i].get_future();
+        }
 
         opt::local_addr server_local{};
 
@@ -49,6 +54,13 @@ namespace oxen::quic::test
         opt::local_addr client_d_local{};
 
         auto p_itr = stream_promises.begin();
+        auto estab_itr = establish_promises.begin();
+
+        connection_established_callback established_cb = [&](connection_interface&) {
+            log::debug(log_cat, "Calling server connection established callback...");
+            estab_itr->set_value(true);
+            ++estab_itr;
+        };
 
         stream_data_callback server_data_cb = [&](Stream&, bstring_view) {
             log::debug(log_cat, "Calling server stream data callback... data received...");
@@ -62,7 +74,7 @@ namespace oxen::quic::test
         const auto& server_tls = tls.second;
 
         auto server_endpoint = test_net.endpoint(server_local);
-        REQUIRE(server_endpoint->listen(server_tls, server_data_cb));
+        REQUIRE(server_endpoint->listen(server_tls, server_data_cb, established_cb));
 
         opt::remote_addr client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
 
@@ -106,8 +118,11 @@ namespace oxen::quic::test
             stream_d->send(msg);
         }};
 
+        for (auto& f : establish_futures)
+            CHECK(f.wait_for(1s) == std::future_status::ready);
+
         for (auto& f : stream_futures)
-            REQUIRE(f.get());
+            REQUIRE(f.wait_for(1s) == std::future_status::ready);
 
         async_thread_b.join();
         async_thread_a.join();
