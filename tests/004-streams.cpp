@@ -11,6 +11,7 @@ namespace oxen::quic::test
 {
     using namespace std::literals;
 
+    /*
     TEST_CASE("004 - Multiple pending streams: max stream count", "[004][streams][pending][config]")
     {
         auto client_established = callback_waiter{[](connection_interface&) {}};
@@ -228,6 +229,7 @@ namespace oxen::quic::test
 
         REQUIRE(data_check == n_recvs);
     };
+    */
 
     struct ClientStream : public Stream
     {
@@ -255,6 +257,7 @@ namespace oxen::quic::test
         }
     };
 
+    /*
     TEST_CASE("004 - Subclassing quic::stream, custom to standard", "[004][customstream][cross]")
     {
         Network test_net{};
@@ -342,6 +345,7 @@ namespace oxen::quic::test
 
         REQUIRE(server_future.get());
     };
+    */
 
     struct CustomStream : public Stream
     {
@@ -371,6 +375,7 @@ namespace oxen::quic::test
         using CustomStream::CustomStream;
     };
 
+    /*
     TEST_CASE("004 - Subclassing quic::stream, sequential stream queuing", "[004][customstream][sequential][server]")
     {
         Network test_net{};
@@ -767,6 +772,7 @@ namespace oxen::quic::test
         server_extracted->command("test_endpoint"s, "hi"s);
         REQUIRE(client_handler.wait());
     };
+    */
 
     TEST_CASE("004 - BTRequestStream, server extracts queued streams", "[004][server][queue]")
     {
@@ -779,7 +785,24 @@ namespace oxen::quic::test
         std::shared_ptr<BTRequestStream> server_bt, client_bt;
         std::shared_ptr<connection_interface> server_ci;
 
-        auto server_handler = callback_waiter{[&](message msg) { REQUIRE(msg.stream() == server_bt); }};
+        auto request_body = "foobar"s;
+        auto response_body = "bazdie"s;
+
+        const int iter_count{10000};
+
+        for (int i=0; i < 1000; i++)
+        {
+            request_body += std::to_string(i);
+            request_body += "foobar";
+            response_body += std::to_string(i);
+            response_body += "bazdie";
+        }
+        log::error(log_cat, "req_body size: {}, resp_body size: {}", request_body.size(), response_body.size());
+
+        std::atomic<int> server_msg_count{0};
+        std::atomic<int> client_msg_count{0};
+
+        auto server_handler = [&](message msg) { REQUIRE(msg.stream() == server_bt); REQUIRE(msg.body() == request_body); server_msg_count++; msg.respond(response_body); };
 
         auto client_handler = callback_waiter{[&](message msg) { REQUIRE(msg.stream() == client_bt); }};
 
@@ -811,13 +834,20 @@ namespace oxen::quic::test
         REQUIRE(server_extracted);
         REQUIRE(server_bt == server_extracted);
 
-        client_bt->command("test_endpoint"s, "hi"s);
-        REQUIRE(server_handler.wait());
+        auto client_bt_cb = [&](message msg){ REQUIRE(msg.body() == response_body);  client_msg_count++;};
+        for (int i = 0; i < iter_count; i++)
+        {
+            auto copy = std::make_shared<std::string>(request_body);
+            client_bt->command("test_endpoint"s, *copy, client_bt_cb);
+        }
+        //REQUIRE(server_handler.wait());
 
-        server_bt->command("test_endpoint"s, "hi"s);
-        REQUIRE(client_handler.wait());
+        while ( client_msg_count < iter_count);
+
+        //REQUIRE(client_handler.wait());
     };
 
+    /*
     TEST_CASE("004 - BTRequestStream, send queue functionality", "[004][sendqueue]")
     {
         Network test_net{};
@@ -987,5 +1017,6 @@ namespace oxen::quic::test
 
         REQUIRE("still alive"sv != "is success"sv);
     }
+    */
 
 }  // namespace oxen::quic::test

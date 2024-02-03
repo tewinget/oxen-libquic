@@ -182,6 +182,8 @@ namespace oxen::quic
         bstring buf;
         std::string size_buf;
 
+        std::string all_data{};
+
         size_t current_len{0};
 
         std::atomic<int64_t> next_rid{0};

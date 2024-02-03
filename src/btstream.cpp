@@ -132,6 +132,8 @@ namespace oxen::quic
     {
         log::trace(bp_cat, "{} called to handle {} input", __PRETTY_FUNCTION__, msg.type());
 
+        all_data += "MARKER";
+
         if (auto type = msg.type(); type == message::TYPE_REPLY || type == message::TYPE_ERROR)
         {
             log::trace(log_cat, "Looking for request with req_id={}", msg.req_id);
@@ -201,6 +203,7 @@ namespace oxen::quic
     {
         log::trace(bp_cat, "{} called", __PRETTY_FUNCTION__);
 
+        all_data += req;
         while (not req.empty())
         {
             if (current_len == 0)
@@ -321,6 +324,7 @@ namespace oxen::quic
 
         if (bad)
         {
+            log::error(bp_cat, "All data ever: \"{}\"", all_data);
             close(BPARSER_ERROR_EXCEPTION);
             throw std::invalid_argument{bad};
         }
