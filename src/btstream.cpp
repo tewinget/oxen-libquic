@@ -132,6 +132,7 @@ namespace oxen::quic
     {
         log::trace(bp_cat, "{} called to handle {} input", __PRETTY_FUNCTION__, msg.type());
 
+        log::info(bp_cat, "Received bt_encoded message:\n{}\n", msg.view());
         all_data += "MARKER";
 
         if (auto type = msg.type(); type == message::TYPE_REPLY || type == message::TYPE_ERROR)
@@ -287,7 +288,9 @@ namespace oxen::quic
         btlp.append(rid);
         btlp.append(body);
 
-        return std::move(btlp).str();
+        auto foo = std::move(btlp).str();
+        log::info(bp_cat, "Sending bt_encoded message:\n{}\n", foo);
+        return std::move(foo);
     }
 
     /** Returns:

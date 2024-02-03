@@ -834,7 +834,7 @@ namespace oxen::quic::test
         REQUIRE(server_extracted);
         REQUIRE(server_bt == server_extracted);
 
-        auto client_bt_cb = [&](message msg){ REQUIRE(msg.body() == response_body);  client_msg_count++;};
+        auto client_bt_cb = [&](message msg){ if (msg.body() != response_body) log::error(log_cat, "bad response, request_id = {}", msg.rid()); REQUIRE(msg.body() == response_body);  client_msg_count++;};
         for (int i = 0; i < iter_count; i++)
         {
             auto copy = std::make_shared<std::string>(request_body);
