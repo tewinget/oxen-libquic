@@ -264,28 +264,25 @@ if(APPLE AND CMAKE_CROSSCOMPILING)
         set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
       endforeach()
     endif()
-elseif(gmp_build_host STREQUAL "")
+elseif(gmp_build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
     set(gmp_build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
 build_external(libtasn1
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --prefix=${DEPS_DESTDIR} --disable-doc
-        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
-        "LDFLAGS=${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}" "CXXFLAGS=${deps_CXXFLAGS}" ${cross_rc}
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libtasn1.a ${DEPS_DESTDIR}/include/libtasn1.h)
 add_static_target(libtasn1 libtasn1_external libtasn1.a)
 
 build_external(libunistring
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --prefix=${DEPS_DESTDIR}
-        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
-        "LDFLAGS=${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}" "CXXFLAGS=${deps_CXXFLAGS}" ${cross_rc}
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libunistring.a ${DEPS_DESTDIR}/include/unistr.h)
 add_static_target(libunistring libunistring_external libunistring.a)
 
 build_external(libidn2
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --prefix=${DEPS_DESTDIR} --disable-doc
-        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
-        "LDFLAGS=${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}" "CXXFLAGS=${deps_CXXFLAGS}" ${cross_rc}
     DEPENDS libunistring_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
 add_static_target(libidn2 libidn2_external libidn2.a libunistring)
@@ -293,7 +290,7 @@ add_static_target(libidn2 libidn2_external libidn2.a libunistring)
 build_external(gmp
     CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
-        "LDFLAGS=${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
 )
 add_static_target(gmp gmp_external libgmp.a libidn2 libtasn1)
