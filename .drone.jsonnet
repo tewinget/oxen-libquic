@@ -234,6 +234,7 @@ local full_llvm(version) = debian_pipeline(
 // Macos build
 local mac_builder(name,
                   build_type='Release',
+                  arch='amd64',
                   werror=true,
                   lto=false,
                   cmake_extra='',
@@ -245,7 +246,7 @@ local mac_builder(name,
   kind: 'pipeline',
   type: 'exec',
   name: name,
-  platform: { os: 'darwin', arch: 'amd64' },
+  platform: { os: 'darwin', arch: arch },
   steps: [
     { name: 'submodules', commands: submodule_commands },
     {
@@ -312,9 +313,15 @@ local mac_builder(name,
   windows_cross_pipeline('Windows (amd64)', docker_base + 'debian-win32-cross-wine'),
 
   // Macos builds:
-  mac_builder('macOS (Static)',
+  mac_builder('macOS (Release, ARM)', arch='arm64'),
+  mac_builder('macOS (Debug, ARM)', arch='arm64', build_type='Debug'),
+  mac_builder('macOS (Static, ARM)',
+              cmake_extra='-DBUILD_STATIC_DEPS=ON',
+              lto=true,
+              arch='arm64'),
+  mac_builder('macOS (Release, Intel)'),
+  mac_builder('macOS (Debug, Intel)', build_type='Debug'),
+  mac_builder('macOS (Static, Intel)',
               cmake_extra='-DBUILD_STATIC_DEPS=ON',
               lto=true),
-  mac_builder('macOS (Release)'),
-  mac_builder('macOS (Debug)', build_type='Debug'),
 ]
