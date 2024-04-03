@@ -241,13 +241,13 @@ endfunction()
 set(apple_cflags_arch)
 set(apple_cxxflags_arch)
 set(apple_ldflags_arch)
-set(gmp_build_host "${cross_host}")
+set(build_host "${cross_host}")
 if(APPLE AND CMAKE_CROSSCOMPILING)
-    if(gmp_build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
-        set(gmp_build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
+        set(build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
     endif()
-    if(gmp_build_host MATCHES "^(.*-.*-.*)-simulator$")
-        set(gmp_build_host "${CMAKE_MATCH_1}")
+    if(build_host MATCHES "^(.*-.*-.*)-simulator$")
+        set(build_host "${CMAKE_MATCH_1}")
     endif()
 
     set(apple_arch)
@@ -275,8 +275,8 @@ if(APPLE AND CMAKE_CROSSCOMPILING)
         set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
       endforeach()
     endif()
-elseif(gmp_build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
-    set(gmp_build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
+elseif(build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
+    set(build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
 set(libtasn_extra_cflags)
@@ -286,7 +286,7 @@ if(CMAKE_C_COMPILER_ID STREQUAL GNU)
 endif()
 
 build_external(libtasn1
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}"
         "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
         "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
@@ -295,14 +295,14 @@ build_external(libtasn1
 add_static_target(libtasn1::libtasn1 libtasn1_external libtasn1.a)
 
 build_external(libiconv
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
         "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
 add_static_target(libiconv::libiconv libiconv_external libiconv.a)
 
 build_external(libunistring
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
         "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
     DEPENDS libiconv_external
@@ -310,14 +310,14 @@ build_external(libunistring
 add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
 
 build_external(libidn2
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}" ${cross_rc}
     DEPENDS libunistring_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
 add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
 
 build_external(gmp
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
         "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
@@ -325,7 +325,7 @@ build_external(gmp
 add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
 build_external(nettle
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib
         --enable-pic --disable-openssl --disable-documentation
         "CC=${deps_cc}" "CXX=${deps_cxx}"
         "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
@@ -342,7 +342,7 @@ add_static_target(nettle::nettle nettle_external libnettle.a gmp::gmp)
 add_static_target(hogweed::hogweed nettle_external libhogweed.a nettle::nettle)
 
 build_external(gnutls
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         --without-p11-kit --disable-libdane --disable-cxx --without-tpm --without-tpm2 --disable-doc
         --without-zlib --without-brotli --without-zstd --without-libintl-prefix --disable-tests
         --disable-valgrind-tests --disable-full-test-suite
@@ -364,7 +364,7 @@ if(WIN32)
 endif()
 
 build_external(libevent
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
+    CONFIGURE_COMMAND ./configure ${build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
     "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
     "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}" ${cross_rc}
     BUILD_BYPRODUCTS
