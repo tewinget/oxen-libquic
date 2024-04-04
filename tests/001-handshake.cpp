@@ -230,7 +230,7 @@ namespace oxen::quic::test
 
                 auto client_ci = client_endpoint->connect(bad_client_remote, client_tls);
 
-                CHECK(not client_established_2.wait());
+                CHECK(not client_established_2.wait(500ms));
                 CHECK(client_attempt != 1000);
                 CHECK(client_closed.wait(10s));
                 CHECK(client_error == 1000);

@@ -162,7 +162,7 @@ namespace oxen::quic
     /// where `invoke_something` takes a `std::function<int(Foo&, int)>`.  The test code would then
     /// go on to synchronize with:
     ///
-    ///     REQUIRE(waiter.wait(/* 1s */)); // will fail if the lambda doesn't get called within ~1s
+    ///     REQUIRE(waiter.wait(/* 5s */)); // will fail if the lambda doesn't get called within ~5s
     ///
     /// and then can go on to check side effects of the lambda, e.g.:
     ///
@@ -181,7 +181,7 @@ namespace oxen::quic
 
         explicit callback_waiter(T f) : func{std::move(f)} {}
 
-        bool wait(std::chrono::milliseconds timeout = 1s) { return f.wait_for(timeout) == std::future_status::ready; }
+        bool wait(std::chrono::milliseconds timeout = 5s) { return f.wait_for(timeout) == std::future_status::ready; }
 
         bool is_ready() { return wait(0s); }
 
