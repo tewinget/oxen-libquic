@@ -597,7 +597,7 @@ namespace oxen::quic::test
         // This test is inherently racy (by design), but leads to rare data race conditions during
         // destruction; this hacky sleep is here to try to resolve it by adding just a tiny extra
         // window for things to settle down before we start destroying things.
-        std::this_thread::sleep_for(25ms);
+        std::this_thread::sleep_for(50ms);
 
         for (const auto& [incoming, local, remote] : defer_i_l_r)
         {
