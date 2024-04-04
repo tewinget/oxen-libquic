@@ -195,7 +195,77 @@ namespace oxen::quic::test
         };
     };
 
-    TEST_CASE("001 - Handshaking: Client Validation", "[001][client]")
+    TEST_CASE("001 - Handshaking: Incorrect pubkeys", "[001][client][incorrect][pubkeys]")
+    {
+        auto server_established = callback_waiter{[](connection_interface&) {}};
+
+        Network test_net{};
+
+        auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
+
+        Address server_local{};
+        Address client_local{};
+
+        auto server_endpoint = test_net.endpoint(server_local, server_established);
+        CHECK_NOTHROW(server_endpoint->listen(server_tls));
+
+        RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+        SECTION("Incorrect pubkey in remote")
+        {
+            uint64_t client_error{0}, client_attempt{0};
+
+            auto client_established_2 = callback_waiter{[&client_attempt](connection_interface&) { client_attempt = 1000; }};
+
+            auto client_closed = callback_waiter{[&client_error](connection_interface&, uint64_t) { client_error = 1000; }};
+
+            auto client_endpoint = test_net.endpoint(client_local, client_established_2, client_closed);
+
+            RemoteAddress bad_client_remote{defaults::CLIENT_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+            auto client_ci = client_endpoint->connect(bad_client_remote, client_tls);
+
+            CHECK(not client_established_2.wait(500ms));
+            CHECK(client_attempt != 1000);
+            CHECK(client_closed.wait(10s));
+            CHECK(client_error == 1000);
+        }
+
+        SECTION("Incorrect pubkey length")
+        {
+            auto client_endpoint = test_net.endpoint(client_local);
+
+            auto short_key = defaults::SERVER_PUBKEY.substr(0, 31);
+
+            RemoteAddress bad_client_remote{short_key, "127.0.0.1"s, server_endpoint->local().port()};
+
+            REQUIRE_THROWS(client_endpoint->connect(bad_client_remote, client_tls));
+        }
+
+        SECTION("No pubkey in remote")
+        {
+            // If uncommented, this line will not compile! Remote addresses must pass a remote pubkey to be
+            // verified upon the client successfully establishing connection with a remote.
+
+            // RemoteAddress client_remote{"127.0.0.1"s, server_endpoint->local().port()};
+            CHECK(true);
+        }
+
+        SECTION("No TLS creds in connect/listen")
+        {
+            // If uncommented, any of these lines should not compile! connect() and listen()
+            // each require exactly one TLSCreds shared pointer to be provided.
+
+            // server_endpoint->connect(client_remote);                          // no tls
+            // server_endpoint->connect(client_tls, client_remote, client_tls);  // multiple tls
+            // server_endpoint->listen(client_remote);                           // no tls
+            // server_endpoint->listen(server_tls, client_remote, server_tls);   // multiple tls
+
+            CHECK(true);
+        }
+    }
+
+    TEST_CASE("001 - Handshaking: Pubkey successes", "[001][client][correct][pubkeys]")
     {
         auto client_established = callback_waiter{[](connection_interface&) {}};
         auto server_established = callback_waiter{[](connection_interface&) {}};
@@ -212,90 +282,29 @@ namespace oxen::quic::test
 
         RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
 
-        SECTION("Pubkey failures")
+        auto client_endpoint = test_net.endpoint(client_local, client_established);
+
+        SECTION("Correct pubkey in remote")
         {
-            SECTION("Incorrect pubkey in remote")
-            {
-                uint64_t client_error{0}, client_attempt{0};
+            auto client_ci = client_endpoint->connect(client_remote, client_tls);
 
-                auto client_established_2 =
-                        callback_waiter{[&client_attempt](connection_interface&) { client_attempt = 1000; }};
+            // This will return false until the connection has had time to establish and validate. Depending
+            // on the architecture running the test, the connection may be already established and validated
+            // by the time this line es executed
+            CHECK_NOFAIL(client_ci->is_validated());
 
-                auto client_closed =
-                        callback_waiter{[&client_error](connection_interface&, uint64_t) { client_error = 1000; }};
-
-                auto client_endpoint = test_net.endpoint(client_local, client_established_2, client_closed);
-
-                RemoteAddress bad_client_remote{defaults::CLIENT_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
-
-                auto client_ci = client_endpoint->connect(bad_client_remote, client_tls);
-
-                CHECK(not client_established_2.wait(500ms));
-                CHECK(client_attempt != 1000);
-                CHECK(client_closed.wait(10s));
-                CHECK(client_error == 1000);
-            };
-
-            SECTION("Incorrect pubkey length")
-            {
-                auto client_endpoint = test_net.endpoint(client_local);
-
-                auto short_key = defaults::SERVER_PUBKEY.substr(0, 31);
-
-                RemoteAddress bad_client_remote{short_key, "127.0.0.1"s, server_endpoint->local().port()};
-
-                REQUIRE_THROWS(client_endpoint->connect(bad_client_remote, client_tls));
-            }
-
-            SECTION("No pubkey in remote")
-            {
-                // If uncommented, this line will not compile! Remote addresses must pass a remote pubkey to be
-                // verified upon the client successfully establishing connection with a remote.
-
-                // RemoteAddress client_remote{"127.0.0.1"s, server_endpoint->local().port()};
-                CHECK(true);
-            };
-
-            SECTION("No TLS creds in connect/listen")
-            {
-                // If uncommented, any of these lines should not compile! connect() and listen()
-                // each require exactly one TLSCreds shared pointer to be provided.
-
-                // server_endpoint->connect(client_remote);                          // no tls
-                // server_endpoint->connect(client_tls, client_remote, client_tls);  // multiple tls
-                // server_endpoint->listen(client_remote);                           // no tls
-                // server_endpoint->listen(server_tls, client_remote, server_tls);   // multiple tls
-
-                CHECK(true);
-            };
+            CHECK(client_established.wait());
+            CHECK(server_established.wait());
+            CHECK(client_ci->is_validated());
         }
 
-        SECTION("Pubkey successes")
+        SECTION("Immediate network shutdown after calling connect")
         {
-            auto client_endpoint = test_net.endpoint(client_local, client_established);
+            test_net.set_shutdown_immediate();
 
-            SECTION("Correct pubkey in remote")
-            {
-                auto client_ci = client_endpoint->connect(client_remote, client_tls);
-
-                // This will return false until the connection has had time to establish and validate. Depending
-                // on the architecture running the test, the connection may be already established and validated
-                // by the time this line es executed
-                CHECK_NOFAIL(client_ci->is_validated());
-
-                CHECK(client_established.wait());
-                CHECK(server_established.wait());
-                CHECK(client_ci->is_validated());
-            };
-
-            SECTION("Immediate network shutdown after calling connect")
-            {
-                test_net.set_shutdown_immediate();
-
-                CHECK_NOTHROW(client_endpoint->connect(client_remote, client_tls));
-            };
+            CHECK_NOTHROW(client_endpoint->connect(client_remote, client_tls));
         }
-    };
+    }
 
     TEST_CASE("001 - Handshaking: Server Validation", "[001][server]")
     {
