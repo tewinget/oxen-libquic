@@ -97,9 +97,13 @@ function(expand_urls output source_file)
   set(${output} "${expanded}" PARENT_SCOPE)
 endfunction()
 
+
+add_library(libquic_static_deps INTERFACE)
+
 function(add_static_target target ext_target libname)
   add_library(${target} STATIC IMPORTED GLOBAL)
   add_dependencies(${target} ${ext_target})
+  target_link_libraries(libquic_static_deps INTERFACE ${target})
   set_target_properties(${target} PROPERTIES
     IMPORTED_LOCATION ${DEPS_DESTDIR}/lib/${libname}
   )

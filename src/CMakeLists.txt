@@ -36,15 +36,6 @@ target_link_libraries(quic
     oxenc
     PRIVATE
     libquic_internal
-    libtasn1::libtasn1
-    libiconv::libiconv
-    libunistring::libunistring
-    libidn2::libidn2
-    hogweed::hogweed
-    nettle::nettle
-    gmp::gmp
-    ngtcp2::ngtcp2
-    ngtcp2_crypto_gnutls_static
 )
 
 set_target_properties(quic PROPERTIES LIBRARY_OUTPUT_NAME oxenquic)
