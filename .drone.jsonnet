@@ -12,7 +12,7 @@ local default_deps_base = default_deps_old_base + [
 
 local default_deps = ['g++'] + default_deps_base;
 local default_deps_old = ['g++'] + default_deps_old_base;
-local docker_base = 'registry.oxen.rocks/lokinet-ci-';
+local docker_base = 'registry.oxen.rocks/';
 
 local submodule_commands = [
   'git fetch --tags',
@@ -310,7 +310,7 @@ local mac_builder(name,
   debian_pipeline('Debian stable (armhf)', docker_base + 'debian-stable/arm32v7', arch='arm64', jobs=4),
 
   // Windows builds (x64)
-  windows_cross_pipeline('Windows (amd64)', docker_base + 'debian-win32-cross-wine'),
+  windows_cross_pipeline('Windows (amd64)', docker_base + 'debian-win32-cross'),
 
   // Macos builds:
   mac_builder('macOS (Release, ARM)', arch='arm64'),
