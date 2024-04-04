@@ -488,19 +488,14 @@ namespace oxen::quic::test
         auto client_tls = GNUTLSCreds::make_from_ed_keys(C_SEED, C_PUBKEY);
         auto server_tls = GNUTLSCreds::make_from_ed_keys(S_SEED, S_PUBKEY);
 
-        std::mutex mut;
+        std::vector<std::array<std::string, 3>> defer_i_l_r;  // incoming/local/remote
 
-        auto defer_hook = [&mut](const std::string& incoming,
-                                 const std::string& local,
-                                 const std::string& remote,
-                                 std::shared_ptr<connection_interface> local_outbound) -> bool {
-            {
-                std::lock_guard lock{mut};
-                REQUIRE(oxenc::to_hex(incoming) == oxenc::to_hex(remote));
-
-                // The pubkeys definitely should not be the same
-                REQUIRE_FALSE(oxenc::to_hex(incoming) == oxenc::to_hex(local));
-            }
+        auto defer_hook = [&defer_i_l_r](
+                                  const std::string& incoming,
+                                  const std::string& local,
+                                  const std::string& remote,
+                                  std::shared_ptr<connection_interface> local_outbound) -> bool {
+            defer_i_l_r.push_back({incoming, local, remote});
 
             // If the LHS parameter to std::strcmp appears FIRST in lexicographical order, then rv < 0. As a result,
             // if the incoming pubkey appears BEFORE the server pubkey in lexicographical order, we will defer to the
@@ -537,9 +532,7 @@ namespace oxen::quic::test
                 // The endpoint-level callback will be called for the connection that was initiated by the
                 // client, as the client's pubkey dictates it's connection is to be deferred to. As a result,
                 // the reference ID will be different than that of the connection initiated by the server.
-                std::lock_guard lock{mut};
-                REQUIRE(ci.reference_id() != server_ci->reference_id());
-                p.set_value(true);
+                p.set_value(ci.reference_id() != server_ci->reference_id());
             };
 
             auto server_endpoint = test_net.endpoint(server_local, server_established, server_closed_ep_level);
@@ -556,19 +549,14 @@ namespace oxen::quic::test
             client_ci = client_endpoint->connect(client_remote, client_tls);
             server_ci = server_endpoint->connect(server_remote, server_tls);
 
-            {
-                bool established = client_established.wait();
-                std::lock_guard lock{mut};
-                CHECK(established);
-            }
+            CHECK(client_established.wait());
+
             // By signalling to close all connections, we will ensure that the above promise is set during
             // closure of the connection that was preferred.
             client_endpoint->close_conns();
-            {
-                bool got_server_close = f.get();
-                std::lock_guard lock{mut};
-                CHECK(got_server_close);
-            }
+
+            require_future(f, 5s);
+            CHECK(f.get());  // Deferred check for ci.reference_id() != server_ci->reference_id()
         };
 
         SECTION("Override connection level callback", "[override][closehook][connection]")
@@ -591,22 +579,23 @@ namespace oxen::quic::test
             client_ci = client_endpoint->connect(client_remote, client_tls);
             server_ci = server_endpoint->connect(server_remote, server_tls, server_closed_conn_level);
 
-            {
-                bool established = client_established.wait();
-                std::lock_guard lock{mut};
-                CHECK(established);
-            }
+            CHECK(client_established.wait());
             client_endpoint->close_conns();
-            {
-                std::lock_guard lock{mut};
-                CHECK_FALSE(server_closed_conn_level.is_ready());
-            }
+
+            CHECK_FALSE(server_closed_conn_level.is_ready());
         };
 
         // This test is inherently racy (by design), but leads to rare data race conditions during
         // destruction; this hacky sleep is here to try to resolve it by adding just a tiny extra
         // window for things to settle down before we start destroying things.
         std::this_thread::sleep_for(25ms);
+
+        for (const auto& [incoming, local, remote] : defer_i_l_r)
+        {
+            CHECK(oxenc::to_hex(incoming) == oxenc::to_hex(remote));
+            // The pubkeys definitely should not be the same
+            CHECK(oxenc::to_hex(incoming) != oxenc::to_hex(local));
+        }
     };
 
     TEST_CASE("001 - Idle timeout", "[001][idle][timeout]")
