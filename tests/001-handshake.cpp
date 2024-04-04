@@ -232,6 +232,7 @@ namespace oxen::quic::test
 
                 CHECK(not client_established_2.wait());
                 CHECK(client_attempt != 1000);
+                CHECK(client_closed.wait(10s));
                 CHECK(client_error == 1000);
             };
 

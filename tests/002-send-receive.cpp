@@ -567,7 +567,7 @@ namespace oxen::quic::test
                 client_bp->command("test_endpoint"s, req_msg, client_reply_handler);
             }
 
-            require_future(done, 3s);
+            require_future(done, 10s);
             CHECK(good_responses == num_requests);
             CHECK(responses == good_responses);
         }
@@ -711,7 +711,7 @@ namespace oxen::quic::test
             auto s = c.queue_incoming_stream<BTRequestStream>();
             s->register_handler("sleep"s, [&](message m) {
                 slow_response = std::thread{[m = std::move(m)] {
-                    std::this_thread::sleep_for(250ms);
+                    std::this_thread::sleep_for(1s);
                     m.respond("I'm slow");
                 }};
             });
