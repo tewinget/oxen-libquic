@@ -324,7 +324,9 @@ namespace oxen::quic::test
         CHECK(client_established.wait());
         CHECK(server_established.wait());
 
-        auto server_ci = server_endpoint->get_all_conns(Direction::INBOUND).front();
+        auto server_cis = server_endpoint->get_all_conns(Direction::INBOUND);
+        REQUIRE(!server_cis.empty());
+        auto& server_ci = server_cis.front();
         CHECK(client_ci->is_validated());
         CHECK(server_ci->is_validated());
         CHECK(server_ci->remote_key() == ustring{reinterpret_cast<const unsigned char*>(defaults::CLIENT_PUBKEY.data()),
