@@ -8,8 +8,8 @@ target_link_libraries(tests_common PUBLIC
 
 # We need hogweed for generating Ed25519 keys (this is already a gnutls dependency, so we shouldn't
 # be adding any new dep by requiring it)
-if(TARGET hogweed)
-    target_link_libraries(tests_common INTERFACE hogweed)
+if(TARGET hogweed::hogweed)
+    target_link_libraries(tests_common INTERFACE hogweed::hogweed)
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(HOGWEED hogweed REQUIRED IMPORTED_TARGET)
