@@ -94,6 +94,10 @@ target_link_libraries(libquic_external INTERFACE filesystem)
 target_include_directories(libquic_external INTERFACE include)
 target_include_directories(libquic_internal INTERFACE include/oxen/quic)
 
+if(TARGET libquic_static_deps)
+    target_link_libraries(libquic_internal INTERFACE libquic_static_deps)
+endif()
+
 set(warning_flags -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-function -Werror=vla)
 if (LIBQUIC_WARN_DEPRECATED)
     list(APPEND warning_flags -Wdeprecated-declarations)

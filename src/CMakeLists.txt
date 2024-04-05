@@ -28,7 +28,8 @@ add_library(quic
 target_link_libraries(quic
     PUBLIC
     ngtcp2::crypto
-    libevent::core libevent::threads
+    libevent::core
+    libevent::threads
     gnutls::gnutls
     oxen::logging
     libquic_external
