@@ -363,6 +363,13 @@ if(WIN32)
     target_link_libraries(gnutls::gnutls INTERFACE ws2_32 ncrypt crypt32 iphlpapi)
 endif()
 
+
+# libevent doesn't like --host=arm64-whatever, but is okay with aarch64-whatever
+set(libevent_build_host "${build_host}")
+if(libevent_build_host MATCHES "(.*--host=)arm64-(.*)")
+    set(libevent_build_host "${CMAKE_MATCH_1}aarch64-${CMAKE_MATCH_2}")
+endif()
+
 build_external(libevent
     CONFIGURE_COMMAND ./configure ${build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
     "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
