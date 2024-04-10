@@ -619,8 +619,8 @@ namespace oxen::quic
 
 #ifdef _WIN32
         // Microsoft renames everything but uses the same structure just to be obtuse:
-        WSABUF iov;
         WSAMSG hdr{};
+        WSABUF iov;
         hdr.lpBuffers = &iov;
         hdr.dwBufferCount = 1;
         hdr.name = dest_sa;
