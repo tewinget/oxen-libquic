@@ -371,7 +371,7 @@ if(libevent_build_host MATCHES "(.*--host=)arm64-(.*)")
 endif()
 
 build_external(libevent
-    CONFIGURE_COMMAND ./configure ${build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
+    CONFIGURE_COMMAND ./configure ${libevent_build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
     "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
     "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}" ${cross_rc}
     BUILD_BYPRODUCTS
