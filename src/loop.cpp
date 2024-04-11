@@ -122,8 +122,7 @@ namespace oxen::quic
         log::info(log_cat, "Loop shutdown complete");
 
 #ifdef _WIN32
-        if (loop_thread)
-            WSACleanup();
+        WSACleanup();
 #endif
     }
 
@@ -149,11 +148,6 @@ namespace oxen::quic
             loop_thread->join();
 
         log::info(log_cat, "Loop shutdown complete");
-
-#ifdef _WIN32
-        if (loop_thread)
-            WSACleanup();
-#endif
     }
 
     void Loop::setup_job_waker()
