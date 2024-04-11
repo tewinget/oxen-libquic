@@ -122,7 +122,6 @@ namespace oxen::quic::test
             CHECK((ipv6(0x2001, 0xdb8, 0xffff) / 32).contains(ipv6(0x2001, 0xdb8)));
         }
 
-#ifndef _WIN32
         SECTION("IPv4 Addresses", "[ipv4][constructors][ipaddr]")
         {
             uint32_t v4_n;                      // network order ipv4 addr
@@ -131,7 +130,12 @@ namespace oxen::quic::test
 
             REQUIRE(inet_pton(AF_INET, v4_h.c_str(), &v4_n));
 
-            in_addr v4_inaddr{v4_n};
+            in_addr v4_inaddr;
+#ifndef _WIN32
+            v4_inaddr.s_addr = v4_n;
+#else
+            v4_inaddr.S_un.S_addr = v4_n;
+#endif
 
             ipv4 v4_net_order{v4_n};
             ipv4 v4_private{v4_h};
@@ -162,7 +166,7 @@ namespace oxen::quic::test
             CHECK(v4_from_ipv4.to_string() == v4_full);
             CHECK(v4_from_ipv4_n.to_string() == v4_full);
         }
-#endif
+
         SECTION("IPv6 Addresses", "[ipv6][constructors][ipaddr]")
         {
             auto weird = "::ffff:192.0.2.1"s;
