@@ -39,6 +39,7 @@ if(LIBQUIC_BUILD_TESTS)
         010-migration.cpp
 
         main.cpp
+        case_logger.cpp
     )
     target_link_libraries(alltests PRIVATE tests_common Catch2::Catch2)
     extra_linking(alltests)
