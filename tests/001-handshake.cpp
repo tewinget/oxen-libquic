@@ -29,6 +29,8 @@ namespace oxen::quic::test
             Address ipv6_localhost{"::1", 123};
             Address localnet_ipv6{"fdab:1234:5::1", 123};
             Address public_ipv6{"2345::1", 45678};
+            Address any_ipv6{"::", 12345};
+            Address any_ipv4{"0.0.0.0", 12345};
 
             CHECK(empty_addr.is_set());
             CHECK_THROWS(Address{"127.001", 4400});
@@ -37,9 +39,20 @@ namespace oxen::quic::test
             CHECK(good_addr.is_set());
 
             CHECK(empty_addr.is_any_addr());
+#ifndef OXEN_QUIC_ADDRESS_NO_DUAL_STACK
+            CHECK(empty_addr.is_ipv6());
+            CHECK_FALSE(empty_addr.is_ipv4());
+            CHECK(empty_addr.dual_stack);
+#else
+            CHECK_FALSE(empty_addr.is_ipv6());
+            CHECK(empty_addr.is_ipv4());
+            CHECK_FALSE(empty_addr.dual_stack);
+#endif
             CHECK(empty_addr.is_any_port());
             CHECK_FALSE(empty_addr.is_addressable());
             CHECK_FALSE(empty_addr.is_loopback());
+            CHECK_FALSE(any_ipv6.dual_stack);
+            CHECK_FALSE(any_ipv4.dual_stack);
 
             CHECK(empty_addr == empty_addr2);
 

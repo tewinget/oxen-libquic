@@ -131,12 +131,28 @@ namespace oxen::quic
 
         const int sockopt_proto = addr.is_ipv6() ? IPPROTO_IPV6 : IPPROTO_IP;
         const unsigned int sockopt_on = 1;
+        const unsigned int sockopt_off = 0;
+        const size_t sockopt_onoff_size = sizeof(sockopt_on);
+#ifdef _WIN32
+        const auto* sockopt_on_ptr = (const char*)&sockopt_on;
+        const auto* sockopt_off_ptr = (const char*)&sockopt_off;
+#else
+        const auto* sockopt_on_ptr = &sockopt_on;
+        const auto* sockopt_off_ptr = &sockopt_off;
+#endif
 
 #ifdef _WIN32
         init_wsa_bs();
 #endif
 
         sock_ = check_rv(socket(addr.is_ipv6() ? AF_INET6 : AF_INET, SOCK_DGRAM, 0));
+
+        // Enable dual stack mode if appropriate:
+        if (addr.is_ipv6())
+        {
+            const auto* v6only = addr.dual_stack ? sockopt_off_ptr : sockopt_on_ptr;
+            check_rv(setsockopt(sock_, IPPROTO_IPV6, IPV6_V6ONLY, v6only, sockopt_onoff_size));
+        }
 
         // Enable ECN notification on packets we receive:
 #ifndef _WIN32
@@ -168,11 +184,8 @@ namespace oxen::quic
 #else
                                    IP_PKTINFO,
 #endif
-#ifdef _WIN32
-                    (const char*)
-#endif
-                    &sockopt_on,
-                    sizeof(sockopt_on)));
+                    sockopt_on_ptr,
+                    sockopt_onoff_size));
 
         // Bind!
         check_rv(bind(sock_, addr, addr.socklen()));
