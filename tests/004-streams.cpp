@@ -34,7 +34,7 @@ namespace oxen::quic::test
 
         REQUIRE(client_established.wait());
         REQUIRE(conn_interface->get_max_streams() == max_streams.stream_count);
-    };
+    }
 
     TEST_CASE("004 - Multiple pending streams: streams available", "[004][streams][pending][config]")
     {
@@ -68,7 +68,7 @@ namespace oxen::quic::test
 
         require_future(data_future);
         REQUIRE(conn_interface->get_streams_available() == max_streams.stream_count - 1);
-    };
+    }
 
     TEST_CASE("004 - Multiple pending streams: different remote settings", "[004][streams][pending][config]")
     {
@@ -122,7 +122,7 @@ namespace oxen::quic::test
         REQUIRE(server_ci->get_streams_available() == client_config.stream_count);
         REQUIRE(client_ci->get_streams_available() == server_config.stream_count - 1);
         REQUIRE(server_ci->get_max_streams() == server_config.stream_count);
-    };
+    }
 
     TEST_CASE("004 - Multiple pending streams: Execution", "[004][streams][pending][execute]")
     {
@@ -227,7 +227,7 @@ namespace oxen::quic::test
         require_future(f);
 
         REQUIRE(data_check == n_recvs);
-    };
+    }
 
     struct ClientStream : public Stream
     {
@@ -305,7 +305,7 @@ namespace oxen::quic::test
 
         require_future(cs_f);
         require_future(sc_f);
-    };
+    }
 
     TEST_CASE("004 - Subclassing quic::stream, custom to custom", "[004][customstream][subclass]")
     {
@@ -341,7 +341,7 @@ namespace oxen::quic::test
         REQUIRE_NOTHROW(client_stream->send(msg));
 
         require_future(server_future);
-    };
+    }
 
     struct CustomStream : public Stream
     {
@@ -541,7 +541,7 @@ namespace oxen::quic::test
         REQUIRE(server_closed.wait());
 
         CHECK(expected_server_stream_ctor_count == server_stream_ctor_count.load());
-    };
+    }
 
     TEST_CASE("004 - subclass retrieval", "[004][customstream][get_stream]")
     {
@@ -699,7 +699,7 @@ namespace oxen::quic::test
 
         client_ci->close_connection();
         REQUIRE(server_closed.wait());
-    };
+    }
 
     TEST_CASE("004 - BTRequestStream, server stream extraction", "[004][server][extraction]")
     {
@@ -774,7 +774,7 @@ namespace oxen::quic::test
 
         server_extracted->command("test_endpoint"s, "hi"s);
         REQUIRE(client_handler.wait());
-    };
+    }
 
     TEST_CASE("004 - BTRequestStream, server extracts queued streams", "[004][server][queue]")
     {
@@ -824,7 +824,7 @@ namespace oxen::quic::test
 
         server_bt->command("test_endpoint"s, "hi"s);
         REQUIRE(client_handler.wait());
-    };
+    }
 
     TEST_CASE("004 - BTRequestStream, send queue functionality", "[004][sendqueue]")
     {
@@ -898,7 +898,7 @@ namespace oxen::quic::test
         REQUIRE(client_established.wait());
         REQUIRE(server_established.wait());
         REQUIRE(client_handler.wait());
-    };
+    }
 
     TEST_CASE("004 - Stream/connection lifetime handling", "[004][streams][lifetime]")
     {
@@ -961,7 +961,7 @@ namespace oxen::quic::test
 
         // Connection has gone away, but we still have the pointer; this call should do nothing:
         stream->send("But wait, there's more!"s);
-    };
+    }
 
     TEST_CASE("004 - Connection closed during stream callback", "[004][streams][closing]")
     {

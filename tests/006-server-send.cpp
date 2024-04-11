@@ -62,7 +62,7 @@ namespace oxen::quic::test
         require_future(client_future);
         require_future(server_future);
         REQUIRE(data_check == 2);
-    };
+    }
 
     TEST_CASE("006 - Server streams: Remote initiation, server send", "[006][server][streams][send][execute]")
     {
@@ -174,5 +174,5 @@ namespace oxen::quic::test
 
         require_future(server_futures[2]);
         REQUIRE(data_check == 4);
-    };
+    }
 }  // namespace oxen::quic::test

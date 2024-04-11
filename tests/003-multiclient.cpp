@@ -26,8 +26,8 @@ namespace oxen::quic::test
             auto client_c = test_net.endpoint(default_addr);
 
             REQUIRE_FALSE(client_a == client_c);
-        };
-    };
+        }
+    }
 
     TEST_CASE("003 - Multi-client to server transmission: Execution", "[003][multi-client][execute]")
     {
@@ -112,5 +112,5 @@ namespace oxen::quic::test
         async_thread_b.join();
         async_thread_a.join();
         REQUIRE(data_check == 4);
-    };
+    }
 }  // namespace oxen::quic::test

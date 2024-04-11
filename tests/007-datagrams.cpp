@@ -60,7 +60,7 @@ namespace oxen::quic::test
         REQUIRE(bufsize_ep->packet_splitting_enabled());
         REQUIRE(bufsize_ep->splitting_policy() == Splitting::ACTIVE);
         REQUIRE(bufsize_ep->datagram_bufsize() == bsize);
-    };
+    }
 
     TEST_CASE("007 - Datagram support: Query param info from datagram-disabled endpoint", "[007][datagrams][types]")
     {
@@ -86,7 +86,7 @@ namespace oxen::quic::test
         REQUIRE_FALSE(conn_interface->packet_splitting_enabled());
         REQUIRE_FALSE(conn_interface->packet_splitting_enabled());
         REQUIRE(conn_interface->get_max_datagram_size() == 0);
-    };
+    }
 
     TEST_CASE("007 - Datagram support: Query param info from default datagram-enabled endpoint", "[007][datagrams][types]")
     {
@@ -116,7 +116,7 @@ namespace oxen::quic::test
 
         std::this_thread::sleep_for(5ms);
         REQUIRE(conn_interface->get_max_datagram_size() < MAX_PMTUD_UDP_PAYLOAD);
-    };
+    }
 
     TEST_CASE("007 - Datagram support: Query params from split-datagram enabled endpoint", "[007][datagrams][types]")
     {
@@ -144,7 +144,7 @@ namespace oxen::quic::test
 
         std::this_thread::sleep_for(5ms);
         REQUIRE(conn_interface->get_max_datagram_size() < MAX_GREEDY_PMTUD_UDP_PAYLOAD);
-    };
+    }
 
     TEST_CASE("007 - Datagram support: Execute, No Splitting Policy", "[007][datagrams][execute][nosplit]")
     {
@@ -192,8 +192,8 @@ namespace oxen::quic::test
             conn_interface->send_datagram(msg);
 
             require_future(data_future);
-        };
-    };
+        }
+    }
 
     TEST_CASE("007 - Datagram support: Execute, Packet Splitting Enabled", "[007][datagrams][execute][split][simple]")
     {
@@ -270,8 +270,8 @@ namespace oxen::quic::test
 
             require_future(data_future);
             CHECK(data_counter == 2);
-        };
-    };
+        }
+    }
 
     TEST_CASE(
             "007 - Datagram support: Rotating Buffer, Clearing Buffer", "[007][datagrams][execute][split][rotating][clear]")
@@ -354,8 +354,8 @@ namespace oxen::quic::test
             auto server_ci = server_endpoint->get_all_conns(Direction::INBOUND).front();
 
             REQUIRE(server_ci->last_cleared() == 0);
-        };
-    };
+        }
+    }
 
     TEST_CASE(
             "007 - Datagram support: Rotating Buffer, Mixed Datagrams", "[007][datagrams][execute][split][rotating][mixed]")
@@ -440,8 +440,8 @@ namespace oxen::quic::test
                 require_future(f);
 
             REQUIRE(data_counter == int(n));
-        };
-    };
+        }
+    }
 
     TEST_CASE("007 - Datagram support: Rotating Buffer, Induced Loss", "[007][datagrams][execute][split][rotating][loss]")
     {
@@ -523,8 +523,8 @@ namespace oxen::quic::test
 
             REQUIRE(counter == bufsize);
             REQUIRE(received == successful_msg);
-        };
-    };
+        }
+    }
 
     /*
         Test Note:
@@ -633,6 +633,6 @@ namespace oxen::quic::test
             REQUIRE(data_counter == (int)n);
             auto flip_flop_count = TestHelper::disable_dgram_flip_flop(*conn_interface);
             REQUIRE(flip_flop_count < (int)n);
-        };
-    };
+        }
+    }
 }  // namespace oxen::quic::test

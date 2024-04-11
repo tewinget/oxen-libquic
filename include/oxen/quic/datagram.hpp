@@ -148,7 +148,7 @@ namespace oxen::quic
 
         std::optional<bstring> to_buffer(bstring_view data, uint16_t dgid);
 
-        int datagrams_stored() const { return recv_buffer.datagrams_stored(); };
+        int datagrams_stored() const { return recv_buffer.datagrams_stored(); }
 
         int64_t stream_id() const override;
 

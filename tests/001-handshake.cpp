@@ -16,7 +16,7 @@ namespace oxen::quic::test
             auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
             REQUIRE_NOTHROW(GNUTLSCreds::make_from_ed_keys(defaults::CLIENT_SEED, defaults::CLIENT_PUBKEY));
             REQUIRE_THROWS(GNUTLSCreds::make_from_ed_keys(""s, ""s));
-        };
+        }
 
         SECTION("Address objects")
         {
@@ -104,7 +104,7 @@ namespace oxen::quic::test
             CHECK_FALSE(public_ipv6.is_any_port());
             CHECK(public_ipv6.is_addressable());
             CHECK_FALSE(public_ipv6.is_loopback());
-        };
+        }
 
         SECTION("IP Address Ranges", "[range][operators][ipaddr]")
         {
@@ -161,7 +161,7 @@ namespace oxen::quic::test
 
             CHECK(v4_from_ipv4.to_string() == v4_full);
             CHECK(v4_from_ipv4_n.to_string() == v4_full);
-        };
+        }
 #endif
         SECTION("IPv6 Addresses", "[ipv6][constructors][ipaddr]")
         {
@@ -205,8 +205,8 @@ namespace oxen::quic::test
             auto ep = test_net.endpoint(default_addr);
             // Note: kernel chooses a random port after being passed default addr
             CHECK_FALSE(ep->local().to_string() == default_addr.to_string());
-        };
-    };
+        }
+    }
 
     TEST_CASE("001 - Handshaking: Incorrect pubkeys", "[001][client][incorrect][pubkeys]")
     {
@@ -353,7 +353,7 @@ namespace oxen::quic::test
         CHECK(server_ci->is_validated());
         CHECK(server_ci->remote_key() == ustring{reinterpret_cast<const unsigned char*>(defaults::CLIENT_PUBKEY.data()),
                                                  defaults::CLIENT_PUBKEY.length()});
-    };
+    }
 
     TEST_CASE("001 - Handshaking: Types - IPv6", "[001][ipv6]")
     {
@@ -380,7 +380,7 @@ namespace oxen::quic::test
         CHECK_NOTHROW(client_endpoint->connect(client_remote, client_tls));
         CHECK(client_established.wait());
         CHECK(server_established.wait());
-    };
+    }
 
     TEST_CASE("001 - Handshaking: Execution", "[001][handshake][tls][execute]")
     {
@@ -405,7 +405,7 @@ namespace oxen::quic::test
         CHECK(client_established.wait());
         CHECK(server_established.wait());
         CHECK(client_ci->is_validated());
-    };
+    }
 
     TEST_CASE("001 - multi-listen failure", "[001][dumb][listen][protection]")
     {
@@ -447,7 +447,7 @@ namespace oxen::quic::test
         // But server should see the address the client connected to, even though it's listening on
         // the any address:
         CHECK(server_path.local.host() == "127.0.0.1");
-    };
+    }
 
     TEST_CASE("001 - Non-default path local address", "[001][handshake][path][local][nondefault]")
     {
@@ -488,7 +488,7 @@ namespace oxen::quic::test
 
         CHECK(client_path.local.host() == "0.0.0.0");
         CHECK(server_path.local.host() == "127.0.0.2");
-    };
+    }
 
     TEST_CASE("001 - Handshaking: Defer", "[001][defer][quietclose]")
     {
@@ -579,7 +579,7 @@ namespace oxen::quic::test
 
             require_future(f, 5s);
             CHECK(f.get());  // Deferred check for ci.reference_id() != server_ci->reference_id()
-        };
+        }
 
         SECTION("Override connection level callback", "[override][closehook][connection]")
         {
@@ -605,7 +605,7 @@ namespace oxen::quic::test
             client_endpoint->close_conns();
 
             CHECK_FALSE(server_closed_conn_level.is_ready());
-        };
+        }
 
         // This test is inherently racy (by design), but leads to rare data race conditions during
         // destruction; this hacky sleep is here to try to resolve it by adding just a tiny extra
@@ -618,7 +618,7 @@ namespace oxen::quic::test
             // The pubkeys definitely should not be the same
             CHECK(oxenc::to_hex(incoming) != oxenc::to_hex(local));
         }
-    };
+    }
 
     TEST_CASE("001 - Idle timeout", "[001][idle][timeout]")
     {
