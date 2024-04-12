@@ -159,12 +159,20 @@ int main(int argc, char* argv[])
         // but it feels wrong to force it to a critical statement, so temporarily lower the level to
         // info to display it.
         log_level_lowerer enable_info{log::Level::info, test_cat.name};
+        std::vector<std::string> flags;
+        if (server_local != Address{"127.0.0.1", 5500})
+            flags.push_back("--remote {}"_format(server_local.to_string()));
+        flags.push_back("--remote-pubkey={}"_format(oxenc::to_base64(pubkey)));
+        if (no_hash)
+            flags.push_back(no_checksum ? "-HX" : "-H");
+        else if (no_checksum)
+            flags.push_back("-X");
+
         log::info(
                 test_cat,
-                "Listening on {}; client connection args:\n\t{}--remote-pubkey={}",
+                "Listening on {}; client connection args:\n\t{}",
                 server_local,
-                server_local != Address{"127.0.0.1", 5500} ? "--remote {} "_format(server_local.to_string()) : "",
-                oxenc::to_base64(pubkey));
+                "{}"_format(fmt::join(flags, " ")));
     }
 
     for (;;)
