@@ -195,7 +195,7 @@ namespace oxen::quic
                             sock_,
                             sockopt_proto,
                             addr.is_ipv6() ? IPV6_RECVPKTINFO :
-#ifdef IP_RECVDSTADDR
+#if defined(IP_RECVDSTADDR) && !defined(_WIN32)
                                            IP_RECVDSTADDR,
 #else
                                            IP_PKTINFO,
@@ -761,7 +761,7 @@ namespace oxen::quic
             }
 
             // extract the destination address into path.local
-#ifdef IP_RECVDSTADDR
+#if defined(IP_RECVDSTADDR) && !defined(_WIN32)
             else if (cmsg->cmsg_type == IP_RECVDSTADDR)
                 path.local.set_addr(reinterpret_cast<const struct in_addr*>(QUIC_CMSG_DATA(cmsg)));
 #else
