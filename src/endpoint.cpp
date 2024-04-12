@@ -80,6 +80,11 @@ namespace oxen::quic
         assert(_static_secret.size() >= 16);  // opt::static_secret should have checked this
     }
 
+    void Endpoint::handle_ep_opt(opt::manual_routing mrouting)
+    {
+        _manual_routing = std::move(mrouting);
+    }
+
     ConnectionID Endpoint::next_reference_id()
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
@@ -95,13 +100,23 @@ namespace oxen::quic
         return secret;
     }
 
+    void Endpoint::manually_receive_packet(Packet&& pkt)
+    {
+        call([this, pkt]() mutable { handle_packet(std::move(pkt)); });
+    }
+
     void Endpoint::_init_internals()
     {
-        log::debug(log_cat, "Starting new UDP socket on {}", _local);
-        socket = std::make_unique<UDPSocket>(
-                get_loop().get(), _local, [this](auto&& packet) { handle_packet(std::move(packet)); });
+        if (not _manual_routing)
+        {
+            log::debug(log_cat, "Starting new UDP socket on {}", _local);
+            socket = std::make_unique<UDPSocket>(
+                    get_loop().get(), _local, [this](auto&& packet) { handle_packet(std::move(packet)); });
 
-        _local = socket->address();
+            _local = socket->address();
+        }
+        else
+            log::info(log_cat, "Endpoint enabled with manual packet routing -- bypassing UDP socket creation!");
 
         expiry_timer.reset(event_new(
                 get_loop().get(),
@@ -764,11 +779,17 @@ namespace oxen::quic
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
 
+        if (_manual_routing)
+        {
+            return _manual_routing(path, bstring_view{buf, *bufsize}, n_pkts);
+        }
+
         if (!socket)
         {
             log::warning(log_cat, "Cannot send packets on closed socket ({})", path);
             return io_result{EBADF};
         }
+
         assert(n_pkts >= 1 && n_pkts <= MAX_BATCH);
 
         log::trace(log_cat, "Sending {} UDP packet(s) {}...", n_pkts, path);
@@ -814,7 +835,7 @@ namespace oxen::quic
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
 
-        if (!socket)
+        if (not _manual_routing and !socket)
         {
             log::warning(log_cat, "Cannot sent to dead socket for path {}", p);
             if (callback)

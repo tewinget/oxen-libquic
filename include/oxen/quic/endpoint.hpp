@@ -57,8 +57,8 @@ namespace oxen::quic
         template <typename... Opt>
         Endpoint(Network& n, const Address& listen_addr, Opt&&... opts) : net{n}, _local{listen_addr}
         {
-            _init_internals();
             ((void)handle_ep_opt(std::forward<Opt>(opts)), ...);
+            _init_internals();
             if (_static_secret.empty())
                 _static_secret = make_static_secret();
         }
@@ -88,7 +88,7 @@ namespace oxen::quic
             std::promise<std::shared_ptr<Connection>> p;
             auto f = p.get_future();
 
-            if (!remote.is_addressable())
+            if (not _manual_routing and !remote.is_addressable())
                 throw std::invalid_argument("Address must be addressible to connect");
 
             if (_local.is_ipv6() && !remote.is_ipv6())
@@ -195,6 +195,8 @@ namespace oxen::quic
         // Returns a random value suitable for use as the Endpoint static secret value.
         static ustring make_static_secret();
 
+        void manually_receive_packet(Packet&& pkt);
+
       private:
         friend class Network;
         friend class Loop;
@@ -211,6 +213,8 @@ namespace oxen::quic
         bool _packet_splitting{false};
         Splitting _policy{Splitting::NONE};
         int _rbufsize{4096};
+
+        opt::manual_routing _manual_routing;
 
         uint64_t _next_rid{0};
 
@@ -243,6 +247,7 @@ namespace oxen::quic
         void handle_ep_opt(connection_established_callback conn_established_cb);
         void handle_ep_opt(connection_closed_callback conn_closed_cb);
         void handle_ep_opt(opt::static_secret ssecret);
+        void handle_ep_opt(opt::manual_routing mrouting);
 
         // Takes a std::optional-wrapped option that does nothing if the optional is empty,
         // otherwise passes it through to the above.  This is here to allow runtime-dependent

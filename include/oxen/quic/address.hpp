@@ -380,6 +380,8 @@ namespace oxen::quic
             return &_path;
         }
 
+        Path invert() const { return {remote, local}; }
+
         std::string to_string() const;
     };
 }  // namespace oxen::quic
