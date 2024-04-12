@@ -59,15 +59,23 @@ namespace oxen::quic
 #endif
 
     /// Checks rv for being -1 and, if so, raises a system_error from errno.  Otherwise returns it.
-    static int check_rv(int rv)
+    static int check_rv(int rv, std::string_view action)
     {
+        std::optional<std::error_code> ec;
 #ifdef _WIN32
         if (rv == SOCKET_ERROR)
-            throw std::system_error{WSAGetLastError(), std::system_category()};
+            ec.emplace(WSAGetLastError(), std::system_category());
 #else
         if (rv == -1)
-            throw std::system_error{errno, std::system_category()};
+            ec.emplace(errno, std::system_category());
+
 #endif
+        if (ec)
+        {
+            log::error(log_cat, "Got error {} ({}) during {}", ec->value(), ec->message(), action);
+            throw std::system_error{*ec};
+        }
+
         return rv;
     }
 
@@ -145,19 +153,25 @@ namespace oxen::quic
         init_wsa_bs();
 #endif
 
-        sock_ = check_rv(socket(addr.is_ipv6() ? AF_INET6 : AF_INET, SOCK_DGRAM, 0));
+        sock_ = check_rv(socket(addr.is_ipv6() ? AF_INET6 : AF_INET, SOCK_DGRAM, 0), "socket creation");
 
         // Enable dual stack mode if appropriate:
         if (addr.is_ipv6())
         {
             const auto* v6only = addr.dual_stack ? sockopt_off_ptr : sockopt_on_ptr;
-            check_rv(setsockopt(sock_, IPPROTO_IPV6, IPV6_V6ONLY, v6only, sockopt_onoff_size));
+            check_rv(setsockopt(sock_, IPPROTO_IPV6, IPV6_V6ONLY, v6only, sockopt_onoff_size), "setting v6only flag");
         }
 
         // Enable ECN notification on packets we receive:
 #ifndef _WIN32
-        check_rv(setsockopt(
-                sock_, sockopt_proto, addr.is_ipv6() ? IPV6_RECVTCLASS : IP_RECVTOS, &sockopt_on, sizeof(sockopt_on)));
+        check_rv(
+                setsockopt(
+                        sock_,
+                        sockopt_proto,
+                        addr.is_ipv6() ? IPV6_RECVTCLASS : IP_RECVTOS,
+                        &sockopt_on,
+                        sizeof(sockopt_on)),
+                "enable ecn");
 #endif
 
 #ifdef __APPLE__
@@ -173,30 +187,33 @@ namespace oxen::quic
 #else
         constexpr bool broken_os = false;
 #endif
+
         // Enable destination address info in the packet info:
         if (!broken_os)
-            check_rv(setsockopt(
-                    sock_,
-                    sockopt_proto,
-                    addr.is_ipv6() ? IPV6_RECVPKTINFO :
+            check_rv(
+                    setsockopt(
+                            sock_,
+                            sockopt_proto,
+                            addr.is_ipv6() ? IPV6_RECVPKTINFO :
 #ifdef IP_RECVDSTADDR
-                                   IP_RECVDSTADDR,
+                                           IP_RECVDSTADDR,
 #else
-                                   IP_PKTINFO,
+                                           IP_PKTINFO,
 #endif
-                    sockopt_on_ptr,
-                    sockopt_onoff_size));
+                            sockopt_on_ptr,
+                            sockopt_onoff_size),
+                    "enable dest addr info");
 
         // Bind!
-        check_rv(bind(sock_, addr, addr.socklen()));
-        check_rv(getsockname(sock_, bound_, bound_.socklen_ptr()));
+        check_rv(bind(sock_, addr, addr.socklen()), "bind");
+        check_rv(getsockname(sock_, bound_, bound_.socklen_ptr()), "getsockname");
 
         // Make the socket non-blocking:
 #ifdef _WIN32
         u_long mode = 1;
         ioctlsocket(sock_, FIONBIO, &mode);
 #else
-        check_rv(fcntl(sock_, F_SETFL, O_NONBLOCK));
+        check_rv(fcntl(sock_, F_SETFL, O_NONBLOCK), "set non-blocking");
 #endif
 
         rev_.reset(event_new(
