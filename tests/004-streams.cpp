@@ -564,7 +564,7 @@ namespace oxen::quic::test
         auto d = client_ci->open_stream();
 
         // On slower setups, a small amount of time is needed to finish initializing all the streams
-        std::this_thread::sleep_for(5ms);
+        std::this_thread::sleep_for(25ms);
 
         CHECK(client_ci->get_stream(0) == a);
         CHECK(client_ci->get_stream(4) == b);
