@@ -20,8 +20,7 @@ namespace oxen::quic::test
             auto client_a = test_net.endpoint(default_addr);
 
             REQUIRE_THROWS(
-                    client_b = test_net.endpoint(
-                            RemoteAddress{defaults::SERVER_PUBKEY, "127.0.0.1"s, client_a->local().port()}));
+                    client_b = test_net.endpoint(RemoteAddress{defaults::SERVER_PUBKEY, "", client_a->local().port()}));
 
             auto client_c = test_net.endpoint(default_addr);
 

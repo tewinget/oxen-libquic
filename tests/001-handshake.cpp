@@ -456,17 +456,19 @@ namespace oxen::quic::test
     TEST_CASE("001 - Non-default path local address", "[001][handshake][path][local][nondefault]")
     {
         // This test is very similar to the above, but uses a connection to 127.0.0.2 instead of
-        // 127.0.0.1 (which generally doesn't work on Windows/macOS, even though the entire
-        // 127.0.0.1/8 range is supposed to be localhost).
+        // 127.0.0.1 (which generally doesn't work on macOS, even though the entire 127.0.0.1/8
+        // range is supposed to be localhost).
         //
         // Unlike the above, here the client connects to 127.0.0.2 and so, if the server sends back
         // packets without properly setting the source address, those packets will come from
         // 127.0.0.1, not .2, and the client will drop them as coming from an unknown path and thus
         // the connection to the server will fail.
 
-#if defined(__APPLE__) || defined(_WIN32)
-        SKIP("This test requires 127.0.0.2, which doesn't work on Apple/Windows");
+#if defined(__APPLE__)
+        SKIP("This test requires 127.0.0.2, which doesn't work on Apple");
 #endif
+        if (EMULATING_HELL)
+            SKIP("This test requires 127.0.0.2, which doesn't work under WINE");
 
         Path client_path, server_path;
         auto client_established = callback_waiter{[&](connection_interface& ci) { client_path = ci.path(); }};
