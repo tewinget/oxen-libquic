@@ -171,8 +171,18 @@ local windows_cross_pipeline(name,
         '-DLIBQUIC_BUILD_TESTS=' + (if tests then 'ON ' else 'OFF ') +
         ci_dep_mirror(local_mirror),
         'make -j' + jobs + ' VERBOSE=1',
-        //'wine-stable tests/alltests.exe --log-level debug --colour-mode ansi', // doesn't work yet :(
       ] + extra_cmds,
+    },
+    {
+      name: 'tests (via wine)',
+      image: image,
+      pull: 'always',
+      [if allow_fail then 'failure']: 'ignore',
+      environment: { WINEDEBUG: '-all' },
+      commands: [
+        'cd build/tests',
+        'wine-stable alltests.exe --success -T --log-level debug --colour-mode ansi --no-ipv6',
+      ],
     },
   ],
 };
@@ -310,7 +320,7 @@ local mac_builder(name,
   debian_pipeline('Debian stable (armhf)', docker_base + 'debian-stable/arm32v7', arch='arm64', jobs=4),
 
   // Windows builds (x64)
-  windows_cross_pipeline('Windows (amd64)', docker_base + 'debian-win32-cross'),
+  windows_cross_pipeline('Windows (x64)', docker_base + 'debian-win32-cross'),
 
   // Macos builds:
   mac_builder('macOS (Release, ARM)', arch='arm64'),

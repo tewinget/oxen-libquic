@@ -16,6 +16,13 @@ else()
     target_link_libraries(tests_common INTERFACE PkgConfig::HOGWEED)
 endif()
 
+function(extra_linking target)
+    if(WIN32 AND NOT BUILD_SHARED_LIBS)
+        target_link_libraries(${target} PRIVATE -static)
+    endif()
+endfunction()
+
+
 if(LIBQUIC_BUILD_TESTS)
     add_subdirectory(Catch2)
 
@@ -32,8 +39,10 @@ if(LIBQUIC_BUILD_TESTS)
         010-migration.cpp
 
         main.cpp
+        case_logger.cpp
     )
     target_link_libraries(alltests PRIVATE tests_common Catch2::Catch2)
+    extra_linking(alltests)
 
 endif()
 
@@ -44,6 +53,7 @@ if(LIBQUIC_BUILD_SPEEDTEST)
         add_executable(${x} ${x}.cpp)
         target_link_libraries(${x} PRIVATE tests_common)
         set_target_properties(${x} PROPERTIES OUTPUT_NAME ${LIBQUIC_SPEEDTEST_PREFIX}${x})
+        extra_linking(${x})
     endforeach()
 
     if(LIBQUIC_INSTALL)

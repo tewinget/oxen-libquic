@@ -137,7 +137,7 @@ namespace oxen::quic
     void add_log_opts(CLI::App& cli, std::string& file, std::string& level)
     {
         file = "stderr";
-        level = "debug";
+        level = "info";
 
         cli.add_option("-l,--log-file", file, "Log output filename, or one of stdout/-/stderr/syslog.")
                 ->type_name("FILE")

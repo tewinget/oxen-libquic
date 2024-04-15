@@ -21,9 +21,12 @@ namespace oxen::quic
 
         const std::string to_string() const;
 
-        explicit operator const in_addr&() const { return reinterpret_cast<const in_addr&>(addr); }
-
-        explicit operator const uint32_t&() const { return reinterpret_cast<const uint32_t&>(addr); }
+        explicit operator in_addr() const
+        {
+            in_addr a;
+            a.s_addr = addr;
+            return a;
+        }
 
         constexpr bool operator==(const ipv4& a) const { return addr == a.addr; }
 

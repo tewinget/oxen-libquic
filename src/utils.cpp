@@ -10,6 +10,10 @@
 #include "connection.hpp"
 #include "internal.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace oxen::quic
 {
     void logger_config(std::string out, log::Type type, log::Level reset)
@@ -85,5 +89,14 @@ namespace oxen::quic
         result.first = addr;
         return result;
     }
+
+#ifdef _WIN32
+    static bool running_under_wine_impl()
+    {
+        auto ntdll = GetModuleHandle("ntdll.dll");
+        return ntdll && GetProcAddress(ntdll, "wine_get_version");
+    }
+    const bool EMULATING_HELL = running_under_wine_impl();
+#endif
 
 }  // namespace oxen::quic

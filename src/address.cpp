@@ -9,7 +9,11 @@ namespace oxen::quic
     Address::Address(const std::string& addr, uint16_t port)
     {
         int rv = 1;
-        if (addr.empty() || addr.find(':') != std::string_view::npos)
+        if (
+#ifndef OXEN_LIBQUIC_ADDRESS_NO_DUAL_STACK
+                addr.empty() ||
+#endif
+                addr.find(':') != std::string_view::npos)
         {
             _sock_addr.ss_family = AF_INET6;
             auto& sin6 = reinterpret_cast<sockaddr_in6&>(_sock_addr);
@@ -17,7 +21,9 @@ namespace oxen::quic
             _addr.addrlen = sizeof(sockaddr_in6);
             if (!addr.empty())
                 rv = inet_pton(AF_INET6, addr.c_str(), &sin6.sin6_addr);
-            // Otherwise default to all-0 IPv6 address, which is good (it's `::`, the IPv6 any addr)
+            else
+                // Otherwise default to all-0 IPv6 address with the dual stack flag enabled
+                dual_stack = true;
         }
         else
         {
@@ -25,7 +31,10 @@ namespace oxen::quic
             auto& sin4 = reinterpret_cast<sockaddr_in&>(_sock_addr);
             sin4.sin_port = oxenc::host_to_big(port);
             _addr.addrlen = sizeof(sockaddr_in);
-            rv = inet_pton(AF_INET, addr.c_str(), &sin4.sin_addr);
+#ifdef OXEN_LIBQUIC_ADDRESS_NO_DUAL_STACK
+            if (!addr.empty())
+#endif
+                rv = inet_pton(AF_INET, addr.c_str(), &sin4.sin_addr);
         }
         if (rv == 0)  // inet_pton returns this on invalid input
             throw std::invalid_argument{"Cannot construct address: invalid IP"};

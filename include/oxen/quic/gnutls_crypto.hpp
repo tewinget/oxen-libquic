@@ -313,7 +313,7 @@ namespace oxen::quic
 
         ~GNUTLSSession();
 
-        void* get_session() override { return session; };
+        void* get_session() override { return session; }
 
         void* get_anti_replay() const override { return anti_replay; }
 

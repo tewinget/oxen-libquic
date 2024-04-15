@@ -109,5 +109,5 @@ namespace oxen::quic::test
 
         require_future(conn_future_b);
         CHECK(client_established_b.wait());
-    };
+    }
 }  // namespace oxen::quic::test

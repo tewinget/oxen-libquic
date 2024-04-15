@@ -39,7 +39,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             REQUIRE(client_established.wait());
             REQUIRE(conn->selected_alpn() == "default"_usv);
-        };
+        }
 
         SECTION("No Server ALPNs specified (defaulted)")
         {
@@ -55,7 +55,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("No Client ALPNs specified (defaulted)")
         {
@@ -71,7 +71,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("Client ALPNs not supported")
         {
@@ -88,7 +88,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("Select first ALPN both sides support")
         {
@@ -112,7 +112,7 @@ namespace oxen::quic::test
             auto conn2 = client_endpoint2->connect(client_remote, client_tls);
             REQUIRE(client_established2.wait());
             REQUIRE(conn2->selected_alpn() == "relay"_usv);
-        };
-    };
+        }
+    }
 
 }  // namespace oxen::quic::test

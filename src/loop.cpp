@@ -40,6 +40,14 @@ namespace oxen::quic
         running.store(true);
     }
 
+    static std::vector<std::string_view> get_ev_methods()
+    {
+        std::vector<std::string_view> ev_methods_avail;
+        for (const char** methods = event_get_supported_methods(); methods && *methods; methods++)
+            ev_methods_avail.emplace_back(*methods);
+        return ev_methods_avail;
+    }
+
     Loop::Loop()
     {
         log::trace(log_cat, "Beginning loop context creation with new ev loop thread");
@@ -68,9 +76,7 @@ namespace oxen::quic
 #endif
         }
 
-        std::vector<std::string_view> ev_methods_avail;
-        for (const char** methods = event_get_supported_methods(); *methods != nullptr; methods++)
-            ev_methods_avail.emplace_back(*methods);
+        static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
         log::debug(
                 log_cat,
                 "Starting libevent {}; available backends: {}",
@@ -116,8 +122,7 @@ namespace oxen::quic
         log::info(log_cat, "Loop shutdown complete");
 
 #ifdef _WIN32
-        if (loop_thread)
-            WSACleanup();
+        WSACleanup();
 #endif
     }
 
@@ -143,11 +148,6 @@ namespace oxen::quic
             loop_thread->join();
 
         log::info(log_cat, "Loop shutdown complete");
-
-#ifdef _WIN32
-        if (loop_thread)
-            WSACleanup();
-#endif
     }
 
     void Loop::setup_job_waker()

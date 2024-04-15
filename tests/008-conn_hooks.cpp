@@ -39,7 +39,7 @@ namespace oxen::quic::test
             REQUIRE(server_established.wait());
 
             conn_interface->close_connection(error_code);
-        };
+        }
 
         SECTION("via Endpoint::{connect,listen}(...)")
         {
@@ -55,11 +55,11 @@ namespace oxen::quic::test
             REQUIRE(server_established.wait());
 
             conn_interface->close_connection(error_code);
-        };
+        }
 
         REQUIRE(server_closed.wait());
         REQUIRE(client_closed.wait());
         CHECK(client_error == error_code);
         CHECK(server_error == error_code);
-    };
+    }
 }  // namespace oxen::quic::test

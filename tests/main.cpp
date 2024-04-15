@@ -10,6 +10,7 @@ int main(int argc, char* argv[])
 
     using namespace Catch::Clara;
     std::string log_level = "critical", log_file = "stderr";
+    bool test_case_tracing = false;
     oxen::quic::disable_ipv6 = false;
     oxen::quic::disable_rotating_buffer = false;
 
@@ -17,7 +18,8 @@ int main(int argc, char* argv[])
                Opt(log_file, "file")["--log-file"](
                        "oxen-logging log file to output logs to, or one of  or one of stdout/-/stderr/syslog.") |
                Opt(oxen::quic::disable_ipv6)["--no-ipv6"]("disable ipv6 addressing in the test suite") |
-               Opt(oxen::quic::disable_rotating_buffer)["--no-buf"]("disable rotating buffers in the test suite");
+               Opt(oxen::quic::disable_rotating_buffer)["--no-buf"]("disable rotating buffers in the test suite") |
+               Opt(test_case_tracing)["-T"]["--test-tracing"]("enable oxen log tracing of test cases/sections");
 
     session.cli(cli);
 
@@ -25,6 +27,8 @@ int main(int argc, char* argv[])
         return rc;
 
     oxen::quic::setup_logging(log_file, log_level);
+
+    oxen::log::set_level(oxen::log::Cat("testcase"), test_case_tracing ? oxen::log::Level::trace : oxen::log::Level::off);
 
     oxen::quic::test::defaults::CLIENT_KEYS = oxen::quic::generate_ed25519();
     oxen::quic::test::defaults::SERVER_KEYS = oxen::quic::generate_ed25519();

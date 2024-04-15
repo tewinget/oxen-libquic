@@ -57,11 +57,12 @@ namespace oxen::quic
     using ustring_view = std::basic_string_view<unsigned char>;
     using stream_buffer = std::deque<std::pair<bstring_view, std::shared_ptr<void>>>;
 
-    inline constexpr bool IN_HELL =
 #ifdef _WIN32
-            true;
+    inline constexpr bool IN_HELL = true;
+    extern const bool EMULATING_HELL;  // True if compiled for windows but running under WINE
 #else
-            false;
+    inline constexpr bool IN_HELL = false;
+    inline constexpr bool EMULATING_HELL = false;
 #endif
 
     struct ngtcp2_error_code_t final
