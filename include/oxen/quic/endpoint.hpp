@@ -237,6 +237,7 @@ namespace oxen::quic
         void handle_ep_opt(opt::enable_datagrams dc);
         void handle_ep_opt(opt::outbound_alpns alpns);
         void handle_ep_opt(opt::inbound_alpns alpns);
+        void handle_ep_opt(opt::alpns alpns);
         void handle_ep_opt(opt::handshake_timeout timeout);
         void handle_ep_opt(dgram_data_callback dgram_cb);
         void handle_ep_opt(connection_established_callback conn_established_cb);
