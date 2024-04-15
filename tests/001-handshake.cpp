@@ -496,8 +496,12 @@ namespace oxen::quic::test
         CHECK(server_path.local.host() == "127.0.0.2");
     }
 
-    TEST_CASE("001 - Handshaking: Defer", "[001][defer][quietclose]")
+    TEST_CASE("001 - Handshaking: simultaneous bidirection connection resolution", "[001][defer][quietclose]")
     {
+        // This test is designed to test a scenario where A and B connect to each other
+        // simultaneously and want to coordinate on which of the two connections to keep alive by
+        // using `set_close_quietly` on the one to be dropped.
+
         auto client_established = callback_waiter{[](connection_interface&) {}};
         auto server_established = callback_waiter{[](connection_interface&) {}};
 
@@ -512,6 +516,7 @@ namespace oxen::quic::test
         Network test_net{};
 
         std::shared_ptr<connection_interface> server_ci, client_ci;
+        std::mutex ci_mutex;
 
         auto client_tls = GNUTLSCreds::make_from_ed_keys(C_SEED, C_PUBKEY);
         auto server_tls = GNUTLSCreds::make_from_ed_keys(S_SEED, S_PUBKEY);
@@ -539,11 +544,13 @@ namespace oxen::quic::test
         };
 
         server_tls->set_key_verify_callback([&](const ustring_view& key, const ustring_view&) {
+            std::lock_guard lock{ci_mutex};
             return defer_hook(
                     std::string{reinterpret_cast<const char*>(key.data()), key.size()}, S_PUBKEY, C_PUBKEY, server_ci);
         });
 
         client_tls->set_key_verify_callback([&](const ustring_view& key, const ustring_view&) {
+            std::lock_guard lock{ci_mutex};
             return defer_hook(
                     std::string{reinterpret_cast<const char*>(key.data()), key.size()}, C_PUBKEY, S_PUBKEY, client_ci);
         });
@@ -574,8 +581,11 @@ namespace oxen::quic::test
             server_endpoint->listen(server_tls);
             client_endpoint->listen(client_tls);
 
-            client_ci = client_endpoint->connect(client_remote, client_tls);
-            server_ci = server_endpoint->connect(server_remote, server_tls);
+            {
+                std::lock_guard lock{ci_mutex};
+                client_ci = client_endpoint->connect(client_remote, client_tls);
+                server_ci = server_endpoint->connect(server_remote, server_tls);
+            }
 
             CHECK(client_established.wait());
 
@@ -604,8 +614,11 @@ namespace oxen::quic::test
             server_endpoint->listen(server_tls);
             client_endpoint->listen(client_tls);
 
-            client_ci = client_endpoint->connect(client_remote, client_tls);
-            server_ci = server_endpoint->connect(server_remote, server_tls, server_closed_conn_level);
+            {
+                std::lock_guard lock{ci_mutex};
+                client_ci = client_endpoint->connect(client_remote, client_tls);
+                server_ci = server_endpoint->connect(server_remote, server_tls, server_closed_conn_level);
+            }
 
             CHECK(client_established.wait());
             client_endpoint->close_conns();
