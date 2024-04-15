@@ -1,7 +1,21 @@
 #pragma once
 
 #include "formattable.hpp"
+#include "ip.hpp"
 #include "utils.hpp"
+
+#if defined(__OpenBSD__) || defined(__DragonFly__)
+// These systems are known to disallow dual stack binding, and so on such systems when
+// invoked with an empty address we default to the IPv4 any address rather than the IPv6 any
+// address as the IPv4 is very likely to be more usable.
+//
+// A libquic-using application that wants to support full dual stack on these OSes as well
+// will need to modify how they use QUIC to maintain *two* endpoints: one bound to `[::]`
+// and one bound to `0.0.0.0`.  (Using such an explicit address instead of a
+// default-constructed or empty IP address will not be dual stack anywhere).  Alternatively an
+// application can use this OXEN_LIBQUIC_ADDRESS_NO_DUAL_STACK definition to figure something out.
+#define OXEN_LIBQUIC_ADDRESS_NO_DUAL_STACK
+#endif
 
 namespace oxen::quic
 {
@@ -21,10 +35,14 @@ namespace oxen::quic
         {
             std::memmove(&_sock_addr, &obj._sock_addr, sizeof(_sock_addr));
             _addr.addrlen = obj._addr.addrlen;
+            dual_stack = obj.dual_stack;
         }
 
       public:
-        // Default constructor or single-port constructor yields [::]:port (or [::]:0 if port omitted)
+        /// Default constructor or single-port constructor yields [::]:port (or [::]:0 if port
+        /// omitted) on most platforms where dual-stack IPv6/IPv4 sockets are supported.  On OSes
+        /// that do not allow dual-stack sockets (OpenBSD, DragonFlyBSD) the default for an empty IP
+        /// address is instead the IPv4 any address (0.0.0.0).
         explicit Address(uint16_t port = 0) : Address{"", port} {}
 
         Address(const sockaddr* s, socklen_t n)
@@ -40,6 +58,10 @@ namespace oxen::quic
         Address(const std::string& addr, uint16_t port);
 
         explicit Address(const ngtcp2_addr& addr);
+
+        explicit Address(ipv4 v4, uint16_t port = 0);
+
+        explicit Address(ipv6 v6, uint16_t port = 0);
 
         // Assignment from a sockaddr pointer; we copy the sockaddr's contents
         template <
@@ -62,6 +84,14 @@ namespace oxen::quic
             _copy_internals(obj);
             return *this;
         }
+
+        // If true and this Address is IPv6 then QUIC will set the IPV6_V6ONLY socket option when
+        // binding the socket.  This will default to true *only* for default-constructed any
+        // addresses; if an explicit address is given (including the `[::]` IPv6 any-address) then
+        // this will remain false, and the socket will not be dual-stack unless this is manually
+        // set to true before binding.  (Note that manually setting it to true on systems where the
+        // socket option cannot be set will cause a failure during endpoint binding).
+        bool dual_stack = false;
 
         void set_port(uint16_t port)
         {
@@ -140,11 +170,16 @@ namespace oxen::quic
             return _addr.addrlen == sizeof(sockaddr_in) &&
                    reinterpret_cast<const sockaddr_in&>(_sock_addr).sin_family == AF_INET;
         }
+
         inline bool is_ipv6() const
         {
             return _addr.addrlen == sizeof(sockaddr_in6) &&
                    reinterpret_cast<const sockaddr_in6&>(_sock_addr).sin6_family == AF_INET6;
         }
+
+        ipv4 to_ipv4() const;
+
+        ipv6 to_ipv6() const;
 
         // Accesses the sockaddr_in for this address.  Precondition: `is_ipv4()`
         inline const sockaddr_in& in4() const
@@ -271,8 +306,6 @@ namespace oxen::quic
         // Address to fmt to format it.
         std::string to_string() const;
     };
-    template <>
-    inline constexpr bool IsToStringFormattable<Address> = true;
 
     struct RemoteAddress : public Address
     {
@@ -304,8 +337,6 @@ namespace oxen::quic
             return *this;
         }
     };
-    template <>
-    inline constexpr bool IsToStringFormattable<RemoteAddress> = true;
 
     // Wrapper for ngtcp2_path with remote/local components. Implicitly convertible
     // to ngtcp2_path*
@@ -351,9 +382,6 @@ namespace oxen::quic
 
         std::string to_string() const;
     };
-    template <>
-    inline constexpr bool IsToStringFormattable<Path> = true;
-
 }  // namespace oxen::quic
 
 namespace std

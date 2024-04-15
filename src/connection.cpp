@@ -477,6 +477,7 @@ namespace oxen::quic
     void Connection::halt_events()
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
+        assert(endpoint().in_event_loop());
         packet_io_trigger.reset();
         packet_retransmit_timer.reset();
         log::debug(log_cat, "Connection ({}) io trigger/retransmit timer events halted", reference_id());
@@ -484,6 +485,7 @@ namespace oxen::quic
 
     void Connection::packet_io_ready()
     {
+        assert(endpoint().in_event_loop());
         if (packet_io_trigger)
             event_active(packet_io_trigger.get(), 0, 0);
         // else we've reset the trigger (via halt_events), which means the connection is closing/draining/etc.
@@ -711,6 +713,13 @@ namespace oxen::quic
     {
         auto ts = get_time();
         flush_packets(ts);
+
+        // If we get a failure (e.g. io error) during flush_packets we might have initiated a
+        // shutdown which would have deleted and reset the timer (in which case we don't want to try
+        // rescheduling it):
+        if (!packet_retransmit_timer)
+            return;
+
         schedule_packet_retransmit(ts);
     }
 

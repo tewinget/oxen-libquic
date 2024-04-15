@@ -45,6 +45,12 @@ namespace oxen::quic
         inbound_alpns = std::move(alpns.alpns);
     }
 
+    void Endpoint::handle_ep_opt(opt::alpns alpns)
+    {
+        inbound_alpns = std::move(alpns.inout_alpns);
+        outbound_alpns = inbound_alpns;
+    }
+
     void Endpoint::handle_ep_opt(opt::handshake_timeout timeout)
     {
         handshake_timeout = timeout.timeout;
@@ -154,8 +160,9 @@ namespace oxen::quic
         // We have to do this in two passes rather than just closing as we go because
         // `_close_connection` can remove from `conns`, invalidating our implicit iterator.
         std::vector<Connection*> close_me;
+
         for (const auto& c : conns)
-            if (!d || *d == c.second->direction())
+            if (c.second && (!d || *d == c.second->direction()))
                 close_me.push_back(c.second.get());
         for (auto* c : close_me)
             _close_connection(*c, io_error{0}, "NO_ERROR");

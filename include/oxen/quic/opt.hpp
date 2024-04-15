@@ -89,6 +89,9 @@ namespace oxen::quic::opt
     {
         std::vector<ustring> alpns;
         explicit outbound_alpns(std::vector<ustring> alpns = {}) : alpns{std::move(alpns)} {}
+
+        // Convenience wrapper that sets a single ALPN value from a regular string:
+        explicit outbound_alpns(std::string_view alpn) : outbound_alpns{{ustring{to_usv(alpn)}}} {}
     };
 
     // supported ALPNs for inbound connections
@@ -96,6 +99,20 @@ namespace oxen::quic::opt
     {
         std::vector<ustring> alpns;
         explicit inbound_alpns(std::vector<ustring> alpns = {}) : alpns{std::move(alpns)} {}
+
+        // Convenience wrapper that sets a single ALPN value from a regular string:
+        explicit inbound_alpns(std::string_view alpn) : inbound_alpns{{ustring{to_usv(alpn)}}} {}
+    };
+
+    // Sets the inbound and outbound ALPNs simulatneous to the same value(s).  This is equivalent to
+    // passing outbound_alpns and inbound_alps, separately, with the same vector argument.
+    struct alpns
+    {
+        std::vector<ustring> inout_alpns;
+        explicit alpns(std::vector<ustring> alpns = {}) : inout_alpns{std::move(alpns)} {}
+
+        // Convenience wrapper that sets a single ALPN value from a regular string:
+        explicit alpns(std::string_view alpn) : alpns{{ustring{to_usv(alpn)}}} {}
     };
 
     struct handshake_timeout

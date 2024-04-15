@@ -13,6 +13,13 @@ set(GNUTLS_SOURCE gnutls-${GNUTLS_VERSION}.tar.xz)
 set(GNUTLS_HASH SHA512=74eddba01ce4c2ffdca781c85db3bb52c85f1db3c09813ee2b8ceea0608f92ca3912fd9266f55deb36a8ba4d01802895ca5d5d219e7d9caec45e1a8534e45a84
     CACHE STRING "gnutls source hash")
 
+set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
+set(LIBICONV_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libiconv
+    CACHE STRING "libiconv mirror(s)")
+set(LIBICONV_SOURCE libiconv-${LIBICONV_VERSION}.tar.gz)
+set(LIBICONV_HASH SHA512=18a09de2d026da4f2d8b858517b0f26d853b21179cf4fa9a41070b2d140030ad9525637dc4f34fc7f27abca8acdc84c6751dfb1d426e78bf92af4040603ced86
+    CACHE STRING "libiconv source hash")
+
 set(LIBUNISTRING_VERSION 1.1 CACHE STRING "libunistring version")
 set(LIBUNISTRING_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libunistring
     CACHE STRING "libunistring mirror(s)")
@@ -90,9 +97,13 @@ function(expand_urls output source_file)
   set(${output} "${expanded}" PARENT_SCOPE)
 endfunction()
 
+
+add_library(libquic_static_deps INTERFACE)
+
 function(add_static_target target ext_target libname)
   add_library(${target} STATIC IMPORTED GLOBAL)
   add_dependencies(${target} ${ext_target})
+  target_link_libraries(libquic_static_deps INTERFACE ${target})
   set_target_properties(${target} PROPERTIES
     IMPORTED_LOCATION ${DEPS_DESTDIR}/lib/${libname}
   )
@@ -106,50 +117,50 @@ endfunction()
 set(cross_host "")
 set(cross_rc "")
 if(CMAKE_CROSSCOMPILING)
+  if(APPLE AND NOT ARCH_TRIPLET AND APPLE_TARGET_TRIPLE)
+    set(ARCH_TRIPLET "${APPLE_TARGET_TRIPLE}")
+  endif()
   set(cross_host "--host=${ARCH_TRIPLET}")
   if (ARCH_TRIPLET MATCHES mingw AND CMAKE_RC_COMPILER)
     set(cross_rc "WINDRES=${CMAKE_RC_COMPILER}")
   endif()
 endif()
+
 if(ANDROID)
   set(android_toolchain_suffix linux-android)
-  set(android_compiler_suffix linux-android23)
+  set(android_compiler_suffix linux-android${ANDROID_PLATFORM_LEVEL})
   if(CMAKE_ANDROID_ARCH_ABI MATCHES x86_64)
-    set(android_machine x86_64)
     set(cross_host "--host=x86_64-linux-android")
     set(android_compiler_prefix x86_64)
-    set(android_compiler_suffix linux-android23)
+    set(android_compiler_suffix linux-android${ANDROID_PLATFORM_LEVEL})
     set(android_toolchain_prefix x86_64)
     set(android_toolchain_suffix linux-android)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES x86)
-    set(android_machine x86)
     set(cross_host "--host=i686-linux-android")
     set(android_compiler_prefix i686)
-    set(android_compiler_suffix linux-android23)
+    set(android_compiler_suffix linux-android${ANDROID_PLATFORM_LEVEL})
     set(android_toolchain_prefix i686)
     set(android_toolchain_suffix linux-android)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES armeabi-v7a)
-    set(android_machine arm)
     set(cross_host "--host=armv7a-linux-androideabi")
     set(android_compiler_prefix armv7a)
-    set(android_compiler_suffix linux-androideabi23)
+    set(android_compiler_suffix linux-androideabi${ANDROID_PLATFORM_LEVEL})
     set(android_toolchain_prefix arm)
     set(android_toolchain_suffix linux-androideabi)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES arm64-v8a)
-    set(android_machine arm64)
     set(cross_host "--host=aarch64-linux-android")
     set(android_compiler_prefix aarch64)
-    set(android_compiler_suffix linux-android23)
+    set(android_compiler_suffix linux-android${ANDROID_PLATFORM_LEVEL})
     set(android_toolchain_prefix aarch64)
     set(android_toolchain_suffix linux-android)
   else()
     message(FATAL_ERROR "unknown android arch: ${CMAKE_ANDROID_ARCH_ABI}")
   endif()
-  set(deps_cc "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/${android_compiler_prefix}-${android_compiler_suffix}-clang")
-  set(deps_cxx "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/${android_compiler_prefix}-${android_compiler_suffix}-clang++")
-  set(deps_ld "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/${android_compiler_prefix}-${android_toolchain_suffix}-ld")
-  set(deps_ranlib "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/${android_toolchain_prefix}-${android_toolchain_suffix}-ranlib")
-  set(deps_ar "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/${android_toolchain_prefix}-${android_toolchain_suffix}-ar")
+  set(deps_cc "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_compiler_prefix}-${android_compiler_suffix}-clang")
+  set(deps_cxx "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_compiler_prefix}-${android_compiler_suffix}-clang++")
+  set(deps_ld "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_compiler_prefix}-${android_toolchain_suffix}-ld")
+  set(deps_ranlib "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_toolchain_prefix}-${android_toolchain_suffix}-ranlib")
+  set(deps_ar "${ANDROID_TOOLCHAIN_ROOT}/bin/${android_toolchain_prefix}-${android_toolchain_suffix}-ar")
 endif()
 
 set(deps_CFLAGS "-O2")
@@ -160,8 +171,13 @@ if(WITH_LTO)
 endif()
 
 if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(deps_CFLAGS "${deps_CFLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-  set(deps_CXXFLAGS "${deps_CXXFLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  if(SDK_NAME)
+    set(deps_CFLAGS "${deps_CFLAGS} -m${SDK_NAME}-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    set(deps_CXXFLAGS "${deps_CXXFLAGS} -m${SDK_NAME}-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  else()
+    set(deps_CFLAGS "${deps_CFLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    set(deps_CXXFLAGS "${deps_CXXFLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  endif()
 endif()
 
 if(_winver)
@@ -225,13 +241,13 @@ endfunction()
 set(apple_cflags_arch)
 set(apple_cxxflags_arch)
 set(apple_ldflags_arch)
-set(gmp_build_host "${cross_host}")
+set(build_host "${cross_host}")
 if(APPLE AND CMAKE_CROSSCOMPILING)
-    if(gmp_build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
-        set(gmp_build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
+        set(build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
     endif()
-    if(gmp_build_host MATCHES "^(.*-.*-.*)-simulator$")
-        set(gmp_build_host "${CMAKE_MATCH_1}")
+    if(build_host MATCHES "^(.*-.*-.*)-simulator$")
+        set(build_host "${CMAKE_MATCH_1}")
     endif()
 
     set(apple_arch)
@@ -259,38 +275,58 @@ if(APPLE AND CMAKE_CROSSCOMPILING)
         set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
       endforeach()
     endif()
-elseif(gmp_build_host STREQUAL "")
-    set(gmp_build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
+elseif(build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
+    set(build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
-
+set(libtasn_extra_cflags)
+if(CMAKE_C_COMPILER_ID STREQUAL GNU)
+    # libtasn1 under current GCC produces some incredibly verbose warnings; disable them:
+    set(libtasn_extra_cflags " -Wno-analyzer-null-dereference -Wno-analyzer-use-of-uninitialized-value")
+endif()
 
 build_external(libtasn1
-    CONFIGURE_EXTRA --disable-doc
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}"
+        "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libtasn1.a ${DEPS_DESTDIR}/include/libtasn1.h)
-add_static_target(libtasn1 libtasn1_external libtasn1.a)
+add_static_target(libtasn1::libtasn1 libtasn1_external libtasn1.a)
+
+build_external(libiconv
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
+add_static_target(libiconv::libiconv libiconv_external libiconv.a)
 
 build_external(libunistring
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc}
+    DEPENDS libiconv_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libunistring.a ${DEPS_DESTDIR}/include/unistr.h)
-add_static_target(libunistring libunistring_external libunistring.a)
+add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
 
 build_external(libidn2
-    CONFIGURE_EXTRA --disable-doc
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}" ${cross_rc}
     DEPENDS libunistring_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
-add_static_target(libidn2 libidn2_external libidn2.a libunistring)
+add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
 
 build_external(gmp
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
-        "LDFLAGS=${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+        "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" ${cross_rc} CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
 )
-add_static_target(gmp gmp_external libgmp.a libidn2 libtasn1)
+add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
 build_external(nettle
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib
-        --with-pic --disable-openssl
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib
+        --enable-pic --disable-openssl --disable-documentation
         "CC=${deps_cc}" "CXX=${deps_cxx}"
         "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
         "CPPFLAGS=-I${DEPS_DESTDIR}/include"
@@ -302,22 +338,23 @@ build_external(nettle
     ${DEPS_DESTDIR}/lib/libhogweed.a
     ${DEPS_DESTDIR}/include/nettle/version.h
 )
-add_static_target(nettle nettle_external libnettle.a gmp)
-add_static_target(hogweed nettle_external libhogweed.a nettle)
+add_static_target(nettle::nettle nettle_external libnettle.a gmp::gmp)
+add_static_target(hogweed::hogweed nettle_external libhogweed.a nettle::nettle)
 
 build_external(gnutls
-    CONFIGURE_EXTRA ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         --without-p11-kit --disable-libdane --disable-cxx --without-tpm --without-tpm2 --disable-doc
-        --without-zlib --without-brotli --without-zstd --without-libintl-prefix
+        --without-zlib --without-brotli --without-zstd --without-libintl-prefix --disable-tests
+        --disable-valgrind-tests --disable-full-test-suite
         "PKG_CONFIG_PATH=${DEPS_DESTDIR}/lib/pkgconfig" "PKG_CONFIG=pkg-config"
-        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib"
-        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}" "CXXFLAGS=${deps_CXXFLAGS}" ${cross_rc}
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}" ${cross_rc}
     DEPENDS nettle_external
     BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libgnutls.a
     ${DEPS_DESTDIR}/include/gnutls/gnutls.h
 )
-add_static_target(gnutls::gnutls gnutls_external libgnutls.a hogweed)
+add_static_target(gnutls::gnutls gnutls_external libgnutls.a hogweed::hogweed)
 set(GNUTLS_FOUND ON CACHE BOOL "")
 set(GNUTLS_INCLUDE_DIR ${DEPS_DESTDIR}/include CACHE PATH "")
 set(GNUTLS_LIBRARY ${DEPS_DESTDIR}/lib/libgnutls.a CACHE FILEPATH "")
@@ -326,8 +363,17 @@ if(WIN32)
     target_link_libraries(gnutls::gnutls INTERFACE ws2_32 ncrypt crypt32 iphlpapi)
 endif()
 
+
+# libevent doesn't like --host=arm64-whatever, but is okay with aarch64-whatever
+set(libevent_build_host "${build_host}")
+if(libevent_build_host MATCHES "(.*--host=)arm64-(.*)")
+    set(libevent_build_host "${CMAKE_MATCH_1}aarch64-${CMAKE_MATCH_2}")
+endif()
+
 build_external(libevent
-    CONFIGURE_EXTRA --disable-openssl
+    CONFIGURE_COMMAND ./configure ${libevent_build_host} --prefix=${DEPS_DESTDIR} --disable-openssl --disable-libevent-regress --disable-samples
+    "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+    "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}" ${cross_rc}
     BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libevent_core.a
     ${DEPS_DESTDIR}/lib/libevent_pthreads.a

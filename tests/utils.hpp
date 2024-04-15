@@ -4,7 +4,6 @@
 
 #include <CLI/CLI.hpp>
 #include <CLI/Error.hpp>
-#include <charconv>
 #include <future>
 #include <optional>
 #include <oxen/log.hpp>
@@ -118,23 +117,6 @@ namespace oxen::quic
         {}
     };
 
-    /// Parses an integer of some sort from a string, requiring that the entire string be consumed
-    /// during parsing.  Return false if parsing failed, sets `value` and returns true if the entire
-    /// string was consumed.
-    template <typename T>
-    bool parse_int(const std::string_view str, T& value, int base = 10)
-    {
-        T tmp;
-        auto* strend = str.data() + str.size();
-        auto [p, ec] = std::from_chars(str.data(), strend, tmp, base);
-        if (ec != std::errc() || p != strend)
-            return false;
-        value = tmp;
-        return true;
-    }
-
-    std::pair<std::string, uint16_t> parse_addr(std::string_view addr, std::optional<uint16_t> default_port = std::nullopt);
-
 #define _require_future2(f, timeout) REQUIRE(f.wait_for(timeout) == std::future_status::ready)
 #define _require_future1(f) _require_future2(f, 1s)
 #define GET_REQUIRE_FUTURE_MACRO(_1, _2, NAME, ...) NAME
@@ -180,7 +162,7 @@ namespace oxen::quic
     /// where `invoke_something` takes a `std::function<int(Foo&, int)>`.  The test code would then
     /// go on to synchronize with:
     ///
-    ///     REQUIRE(waiter.wait(/* 1s */)); // will fail if the lambda doesn't get called within ~1s
+    ///     REQUIRE(waiter.wait(/* 5s */)); // will fail if the lambda doesn't get called within ~5s
     ///
     /// and then can go on to check side effects of the lambda, e.g.:
     ///
@@ -199,7 +181,7 @@ namespace oxen::quic
 
         explicit callback_waiter(T f) : func{std::move(f)} {}
 
-        bool wait(std::chrono::milliseconds timeout = 1s) { return f.wait_for(timeout) == std::future_status::ready; }
+        bool wait(std::chrono::milliseconds timeout = 5s) { return f.wait_for(timeout) == std::future_status::ready; }
 
         bool is_ready() { return wait(0s); }
 

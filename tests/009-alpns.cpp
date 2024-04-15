@@ -39,7 +39,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             REQUIRE(client_established.wait());
             REQUIRE(conn->selected_alpn() == "default"_usv);
-        };
+        }
 
         SECTION("No Server ALPNs specified (defaulted)")
         {
@@ -55,7 +55,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("No Client ALPNs specified (defaulted)")
         {
@@ -71,7 +71,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("Client ALPNs not supported")
         {
@@ -88,7 +88,7 @@ namespace oxen::quic::test
             auto conn = client_endpoint->connect(client_remote, client_tls);
             CHECK(client_closed.wait(2s));
             REQUIRE_FALSE(client_established.is_ready());
-        };
+        }
 
         SECTION("Select first ALPN both sides support")
         {
@@ -112,7 +112,41 @@ namespace oxen::quic::test
             auto conn2 = client_endpoint2->connect(client_remote, client_tls);
             REQUIRE(client_established2.wait());
             REQUIRE(conn2->selected_alpn() == "relay"_usv);
-        };
-    };
+        }
+
+        SECTION("Bidirectional ALPN incoming")
+        {
+            opt::alpns server_alpns{"special-alpn"};
+
+            auto server_endpoint = test_net.endpoint(server_local, server_alpns, timeout);
+            REQUIRE_NOTHROW(server_endpoint->listen(server_tls));
+
+            RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+            opt::outbound_alpns client_alpns{{"foobar"_us}};
+            auto client_endpoint = test_net.endpoint(client_local, client_established, client_closed, client_alpns, timeout);
+
+            auto conn = client_endpoint->connect(client_remote, client_tls);
+            CHECK(client_closed.wait(2s));
+            REQUIRE_FALSE(client_established.is_ready());
+        }
+
+        SECTION("Bidirectional ALPN outgoing")
+        {
+            opt::inbound_alpns server_alpns{"special-alpn"};
+
+            auto server_endpoint = test_net.endpoint(server_local, server_alpns, timeout);
+            REQUIRE_NOTHROW(server_endpoint->listen(server_tls));
+
+            RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+            opt::alpns client_alpns{"special-alpn"};
+            auto client_endpoint = test_net.endpoint(client_local, client_established, client_alpns, timeout);
+
+            auto conn = client_endpoint->connect(client_remote, client_tls);
+            REQUIRE(client_established.wait());
+            REQUIRE(conn->selected_alpn() == "special-alpn"_usv);
+        }
+    }
 
 }  // namespace oxen::quic::test

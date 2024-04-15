@@ -62,6 +62,7 @@ namespace oxen::quic
       protected:
         // Construct via net.make_shared<DatagramIO>(...)
         friend class Network;
+        friend class Loop;
         DatagramIO(Connection& c, Endpoint& e, dgram_data_callback data_cb = nullptr);
 
       public:
@@ -147,7 +148,7 @@ namespace oxen::quic
 
         std::optional<bstring> to_buffer(bstring_view data, uint16_t dgid);
 
-        int datagrams_stored() const { return recv_buffer.datagrams_stored(); };
+        int datagrams_stored() const { return recv_buffer.datagrams_stored(); }
 
         int64_t stream_id() const override;
 

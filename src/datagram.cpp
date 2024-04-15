@@ -42,7 +42,7 @@ namespace oxen::quic
     void DatagramIO::set_fin(bool)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
-    };
+    }
     size_t DatagramIO::unsent_impl() const
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
@@ -60,7 +60,7 @@ namespace oxen::quic
     void DatagramIO::wrote(size_t)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
-    };
+    }
     std::vector<ngtcp2_vec> DatagramIO::pending()
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);

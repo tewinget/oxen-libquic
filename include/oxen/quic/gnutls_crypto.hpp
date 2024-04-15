@@ -135,12 +135,26 @@ namespace oxen::quic
         x509_loader() = default;
         x509_loader(std::string input)
         {
-            if (auto path = fs::u8path(input); fs::exists(path))
+            if (auto path = fs::path(
+#ifdef _WIN32
+                        std::u8string{reinterpret_cast<char8_t*>(input.data()), input.size()}
+#else
+                        input
+#endif
+                );
+                fs::exists(path))
             {
-                format = (str_tolower(path.extension().u8string()) == ".pem") ? GNUTLS_X509_FMT_PEM : GNUTLS_X509_FMT_DER;
+#ifdef _WIN32
+                auto p8_str = path.extension().u8string();
+                auto path_str = std::string{reinterpret_cast<const char*>(p8_str.data()), p8_str.size()};
+
+                format = (str_tolower(path_str) == ".pem") ? GNUTLS_X509_FMT_PEM : GNUTLS_X509_FMT_DER;
+#else
+                format = (str_tolower(path.extension().string()) == ".pem") ? GNUTLS_X509_FMT_PEM : GNUTLS_X509_FMT_DER;
+#endif
                 source = std::move(path);
             }
-            else if (bool pem = starts_with(input, "-----"); pem || (starts_with(input, "\x30") && input.size() >= 48))
+            else if (bool pem = input.starts_with("-----"); pem || (input.starts_with("\x30") && input.size() >= 48))
             {
                 source = std::move(input);
                 update_datum();
@@ -230,7 +244,8 @@ namespace oxen::quic
             if (auto* p = std::get_if<fs::path>(&source))
             {
 #ifdef _WIN32
-                u8path_buf = p->u8string();
+                auto u8_path = p->u8string();
+                u8path_buf = std::string{reinterpret_cast<const char*>(u8_path.data()), u8_path.size()};
                 return u8path_buf.c_str();
 #else
                 return p->c_str();
@@ -245,8 +260,6 @@ namespace oxen::quic
         friend class GNUTLSSession;
 
       private:
-        GNUTLSCreds(std::string local_key, std::string local_cert, std::string remote_cert, std::string ca_arg);
-
         // Construct from raw Ed25519 keys
         GNUTLSCreds(std::string ed_seed, std::string ed_pubkey);
 
@@ -267,9 +280,6 @@ namespace oxen::quic
         void load_keys(x509_loader& seed, x509_loader& pk);
 
         void set_key_verify_callback(key_verify_callback cb) { key_verify = std::move(cb); }
-
-        static std::shared_ptr<GNUTLSCreds> make(
-                std::string remote_key, std::string remote_cert, std::string local_cert = "", std::string ca_arg = "");
 
         static std::shared_ptr<GNUTLSCreds> make_from_ed_keys(std::string seed, std::string pubkey);
 
@@ -303,7 +313,7 @@ namespace oxen::quic
 
         ~GNUTLSSession();
 
-        void* get_session() override { return session; };
+        void* get_session() override { return session; }
 
         void* get_anti_replay() const override { return anti_replay; }
 

@@ -12,7 +12,7 @@ local default_deps_base = default_deps_old_base + [
 
 local default_deps = ['g++'] + default_deps_base;
 local default_deps_old = ['g++'] + default_deps_old_base;
-local docker_base = 'registry.oxen.rocks/lokinet-ci-';
+local docker_base = 'registry.oxen.rocks/';
 
 local submodule_commands = [
   'git fetch --tags',
@@ -77,8 +77,7 @@ local generic_build(jobs, build_type, lto, werror, cmake_extra, local_mirror, te
         ]
         + (if tests then [
              'cd build',
-             '../utils/gen-certs.sh',
-             (if gdb then '../utils/ci/drone-gdb.sh ' else '') + './tests/alltests --success --log-level debug --no-ipv6 --colour-mode ansi',
+             (if gdb then '../utils/ci/drone-gdb.sh ' else '') + './tests/alltests --success -T --log-level debug --no-ipv6 --colour-mode ansi',
              'cd ..',
            ] else []);
 
@@ -172,8 +171,18 @@ local windows_cross_pipeline(name,
         '-DLIBQUIC_BUILD_TESTS=' + (if tests then 'ON ' else 'OFF ') +
         ci_dep_mirror(local_mirror),
         'make -j' + jobs + ' VERBOSE=1',
-        //'wine-stable tests/alltests.exe --log-level debug --colour-mode ansi', // doesn't work yet :(
       ] + extra_cmds,
+    },
+    {
+      name: 'tests (via wine)',
+      image: image,
+      pull: 'always',
+      [if allow_fail then 'failure']: 'ignore',
+      environment: { WINEDEBUG: '-all' },
+      commands: [
+        'cd build/tests',
+        'wine-stable alltests.exe --success -T --log-level debug --colour-mode ansi --no-ipv6',
+      ],
     },
   ],
 };
@@ -211,14 +220,14 @@ local linux_cross_pipeline(name,
 };
 
 local clang(version) = debian_pipeline(
-  'Debian sid/clang-' + version + ' (amd64)',
+  'Debian sid/clang-' + version,
   docker_base + 'debian-sid-clang',
   deps=['clang-' + version] + default_deps_base,
   cmake_extra='-DCMAKE_C_COMPILER=clang-' + version + ' -DCMAKE_CXX_COMPILER=clang++-' + version + ' '
 );
 
 local full_llvm(version) = debian_pipeline(
-  'Debian sid/llvm-' + version + ' (amd64)',
+  'Debian sid/llvm-' + version,
   docker_base + 'debian-sid-clang',
   deps=['clang-' + version, ' lld-' + version, ' libc++-' + version + '-dev', 'libc++abi-' + version + '-dev']
        + default_deps_base,
@@ -235,6 +244,7 @@ local full_llvm(version) = debian_pipeline(
 // Macos build
 local mac_builder(name,
                   build_type='Release',
+                  arch='amd64',
                   werror=true,
                   lto=false,
                   cmake_extra='',
@@ -246,7 +256,7 @@ local mac_builder(name,
   kind: 'pipeline',
   type: 'exec',
   name: name,
-  platform: { os: 'darwin', arch: 'amd64' },
+  platform: { os: 'darwin', arch: arch },
   steps: [
     { name: 'submodules', commands: submodule_commands },
     {
@@ -283,9 +293,10 @@ local mac_builder(name,
       ],
     }],
   },
+
   // Various debian builds
-  debian_pipeline('Debian sid (amd64)', docker_base + 'debian-sid'),
-  debian_pipeline('Debian sid/Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),
+  debian_pipeline('Debian sid', docker_base + 'debian-sid'),
+  debian_pipeline('Debian sid/Debug', docker_base + 'debian-sid', build_type='Debug'),
   clang(16),
   full_llvm(16),
   debian_pipeline('Debian sid -GSO', docker_base + 'debian-sid', cmake_extra='-DLIBQUIC_SEND=sendmmsg'),
@@ -297,17 +308,11 @@ local mac_builder(name,
   debian_pipeline('Debian testing (i386)', docker_base + 'debian-testing/i386'),
   debian_pipeline('Debian 12 static', docker_base + 'debian-bookworm', cmake_extra='-DBUILD_STATIC_DEPS=ON', deps=['g++']),
   debian_pipeline('Debian 12 bookworm (i386)', docker_base + 'debian-bookworm/i386'),
-  debian_pipeline('Debian 11 bullseye (amd64)', docker_base + 'debian-bullseye', deps=default_deps_old, extra_setup=local_gnutls() + debian_backports('bullseye', ['cmake'])),
-  debian_pipeline('Debian 10 buster (amd64)', docker_base + 'debian-buster', deps=default_deps_old, extra_setup=kitware_repo('bionic') + local_gnutls()),
-  debian_pipeline('Debian 10 static Debug', docker_base + 'debian-buster', build_type='Debug', cmake_extra='-DBUILD_STATIC_DEPS=ON', deps=['g++'], extra_setup=kitware_repo('bionic')),
-  debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
-  debian_pipeline('Ubuntu 22.04 jammy (amd64)', docker_base + 'ubuntu-jammy'),
-  debian_pipeline('Ubuntu 20.04 focal (amd64)', docker_base + 'ubuntu-focal', deps=default_deps_old, extra_setup=kitware_repo('focal') + local_gnutls()),
-  debian_pipeline('Ubuntu 18.04 bionic (amd64)',
-                  docker_base + 'ubuntu-bionic',
-                  deps=['g++-8'] + default_deps_old_base,
-                  extra_setup=kitware_repo('bionic') + local_gnutls(),
-                  cmake_extra='-DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8'),
+  debian_pipeline('Debian 11 bullseye', docker_base + 'debian-bullseye', deps=['g++'], extra_setup=local_gnutls() + debian_backports('bullseye', ['cmake'])),
+  debian_pipeline('Debian 11 static Debug', docker_base + 'debian-bullseye', build_type='Debug', cmake_extra='-DBUILD_STATIC_DEPS=ON', deps=default_deps_old, extra_setup=debian_backports('bullseye', ['cmake'])),
+  debian_pipeline('Ubuntu latest', docker_base + 'ubuntu-rolling'),
+  debian_pipeline('Ubuntu 22.04 jammy', docker_base + 'ubuntu-jammy'),
+  debian_pipeline('Ubuntu 20.04 focal', docker_base + 'ubuntu-focal', deps=['g++-10'] + default_deps_old, extra_setup=kitware_repo('focal') + local_gnutls(), cmake_extra='-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10'),
 
   // ARM builds (ARM64 and armhf)
   debian_pipeline('Debian sid (ARM64)', docker_base + 'debian-sid', arch='arm64', jobs=4),
@@ -315,12 +320,18 @@ local mac_builder(name,
   debian_pipeline('Debian stable (armhf)', docker_base + 'debian-stable/arm32v7', arch='arm64', jobs=4),
 
   // Windows builds (x64)
-  windows_cross_pipeline('Windows (amd64)', docker_base + 'debian-win32-cross-wine'),
+  windows_cross_pipeline('Windows (x64)', docker_base + 'debian-win32-cross'),
 
   // Macos builds:
-  mac_builder('macOS (Static)',
+  mac_builder('macOS (Release, ARM)', arch='arm64'),
+  mac_builder('macOS (Debug, ARM)', arch='arm64', build_type='Debug'),
+  mac_builder('macOS (Static, ARM)',
+              cmake_extra='-DBUILD_STATIC_DEPS=ON',
+              lto=true,
+              arch='arm64'),
+  mac_builder('macOS (Release, Intel)'),
+  mac_builder('macOS (Debug, Intel)', build_type='Debug'),
+  mac_builder('macOS (Static, Intel)',
               cmake_extra='-DBUILD_STATIC_DEPS=ON',
               lto=true),
-  mac_builder('macOS (Release)'),
-  mac_builder('macOS (Debug)', build_type='Debug'),
 ]

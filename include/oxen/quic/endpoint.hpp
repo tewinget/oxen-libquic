@@ -38,7 +38,7 @@ namespace oxen::quic
     static constexpr void check_for_tls_creds()
     {
         static_assert(
-                (0 + ... + std::is_convertible_v<remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
+                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
                 "Endpoint listen/connect require exactly one std::shared_ptr<TLSCreds> argument");
     }
 
@@ -97,19 +97,22 @@ namespace oxen::quic
             Path _path = Path{_local, remote};
 
             net.call([&opts..., &p, path = _path, this, remote_pk = std::move(remote).get_remote_key()]() mutable {
+                quic_cid qcid;
+                auto next_rid = next_reference_id();
+
                 try
                 {
                     // initialize client context and client tls context simultaneously
                     outbound_ctx = std::make_shared<IOContext>(Direction::OUTBOUND, std::forward<Opt>(opts)...);
                     _set_context_globals(outbound_ctx);
 
-                    auto next_rid = next_reference_id();
-
                     for (;;)
                     {
                         // emplace random CID into lookup keyed to unique reference ID
                         if (auto [it_a, res_a] = conn_lookup.emplace(quic_cid::random(), next_rid); res_a)
                         {
+                            qcid = it_a->first;
+
                             if (auto [it_b, res_b] = conns.emplace(next_rid, nullptr); res_b)
                             {
                                 it_b->second = Connection::make_conn(
@@ -131,6 +134,8 @@ namespace oxen::quic
                 }
                 catch (...)
                 {
+                    conn_lookup.erase(qcid);
+                    conns.erase(next_rid);
                     p.set_exception(std::current_exception());
                 }
             });
@@ -192,6 +197,7 @@ namespace oxen::quic
 
       private:
         friend class Network;
+        friend class Loop;
         friend class Connection;
         friend struct Callbacks;
         friend class TestHelper;
@@ -231,6 +237,7 @@ namespace oxen::quic
         void handle_ep_opt(opt::enable_datagrams dc);
         void handle_ep_opt(opt::outbound_alpns alpns);
         void handle_ep_opt(opt::inbound_alpns alpns);
+        void handle_ep_opt(opt::alpns alpns);
         void handle_ep_opt(opt::handshake_timeout timeout);
         void handle_ep_opt(dgram_data_callback dgram_cb);
         void handle_ep_opt(connection_established_callback conn_established_cb);

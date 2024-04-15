@@ -68,18 +68,19 @@ int main(int argc, char* argv[])
     {
         explicit stream_info(uint64_t expected) : expected{expected} { gnutls_hash_init(&hasher, GNUTLS_DIG_SHA3_256); }
 
+        ~stream_info() { gnutls_hash_deinit(hasher, nullptr); }
+
         uint64_t expected;
         uint64_t received = 0;
         unsigned char checksum = 0;
         gnutls_hash_hd_t hasher;
-
-        ~stream_info() { gnutls_hash_deinit(hasher, nullptr); }
     };
 
     std::map<ConnectionID, std::map<int64_t, stream_info>> csd;
 
     stream_data_callback stream_data = [&](Stream& s, bstring_view data) {
         auto& sd = csd[s.reference_id];
+
         auto it = sd.find(s.stream_id());
         if (it == sd.end())
         {
@@ -88,8 +89,10 @@ int main(int argc, char* argv[])
                 log::critical(test_cat, "Well this was unexpected: I got {} < 8 bytes", data.size());
                 return;
             }
+
             auto size = oxenc::load_little_to_host<uint64_t>(data.data());
             data.remove_prefix(sizeof(uint64_t));
+
             it = sd.emplace(s.stream_id(), size).first;
             log::warning(test_cat, "First data from new stream {}, expecting {}B!", s.stream_id(), size);
         }
@@ -100,7 +103,7 @@ int main(int argc, char* argv[])
         info.received += data.size();
         if (info.received > info.expected)
         {
-            log::critical(test_cat, "Received too much data ({}B > {}B)!");
+            log::critical(test_cat, "Received too much data ({}B > {}B)!", info.received, info.expected);
             if (!need_more)
                 return;
             data.remove_suffix(info.received - info.expected);
@@ -156,12 +159,20 @@ int main(int argc, char* argv[])
         // but it feels wrong to force it to a critical statement, so temporarily lower the level to
         // info to display it.
         log_level_lowerer enable_info{log::Level::info, test_cat.name};
+        std::vector<std::string> flags;
+        if (server_local != Address{"127.0.0.1", 5500})
+            flags.push_back("--remote {}"_format(server_local.to_string()));
+        flags.push_back("--remote-pubkey={}"_format(oxenc::to_base64(pubkey)));
+        if (no_hash)
+            flags.push_back(no_checksum ? "-HX" : "-H");
+        else if (no_checksum)
+            flags.push_back("-X");
+
         log::info(
                 test_cat,
-                "Listening on {}; client connection args:\n\t{}--remote-pubkey={}",
+                "Listening on {}; client connection args:\n\t{}",
                 server_local,
-                server_local != Address{"127.0.0.1", 5500} ? "--remote {} "_format(server_local.to_string()) : "",
-                oxenc::to_base64(pubkey));
+                "{}"_format(fmt::join(flags, " ")));
     }
 
     for (;;)

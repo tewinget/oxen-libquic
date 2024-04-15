@@ -47,9 +47,11 @@ namespace oxen::quic
 #ifdef _WIN32
     static_assert(std::is_same_v<UDPSocket::socket_t, SOCKET>);
     constexpr int QUIC_IPV4_ECN = IP_ECN;
+    constexpr int QUIC_IPV6_ECN = IPV6_ECN;
     constexpr uint8_t QUIC_ECN_MASK = 0xff;
 #else
     constexpr uint8_t QUIC_ECN_MASK = IPTOS_ECN_MASK;
+    constexpr int QUIC_IPV6_ECN = IPV6_TCLASS;
     constexpr int QUIC_IPV4_ECN =
 #if defined(__APPLE__)  // Apple got --><-- this close to getting it right but then got it wrong
             IP_RECVTOS;
@@ -59,15 +61,23 @@ namespace oxen::quic
 #endif
 
     /// Checks rv for being -1 and, if so, raises a system_error from errno.  Otherwise returns it.
-    static int check_rv(int rv)
+    static int check_rv(int rv, std::string_view action)
     {
+        std::optional<std::error_code> ec;
 #ifdef _WIN32
         if (rv == SOCKET_ERROR)
-            throw std::system_error{WSAGetLastError(), std::system_category()};
+            ec.emplace(WSAGetLastError(), std::system_category());
 #else
         if (rv == -1)
-            throw std::system_error{errno, std::system_category()};
+            ec.emplace(errno, std::system_category());
+
 #endif
+        if (ec)
+        {
+            log::error(log_cat, "Got error {} ({}) during {}", ec->value(), ec->message(), action);
+            throw std::system_error{*ec};
+        }
+
         return rv;
     }
 
@@ -131,17 +141,42 @@ namespace oxen::quic
 
         const int sockopt_proto = addr.is_ipv6() ? IPPROTO_IPV6 : IPPROTO_IP;
         const unsigned int sockopt_on = 1;
+        const unsigned int sockopt_off = 0;
+        const size_t sockopt_onoff_size = sizeof(sockopt_on);
+#ifdef _WIN32
+        const auto* sockopt_on_ptr = (const char*)&sockopt_on;
+        const auto* sockopt_off_ptr = (const char*)&sockopt_off;
+#else
+        const auto* sockopt_on_ptr = &sockopt_on;
+        const auto* sockopt_off_ptr = &sockopt_off;
+#endif
 
 #ifdef _WIN32
         init_wsa_bs();
 #endif
 
-        sock_ = check_rv(socket(addr.is_ipv6() ? AF_INET6 : AF_INET, SOCK_DGRAM, 0));
+        sock_ = check_rv(socket(addr.is_ipv6() ? AF_INET6 : AF_INET, SOCK_DGRAM, 0), "socket creation");
+
+        // Enable dual stack mode if appropriate:
+        if (addr.is_ipv6())
+        {
+            const auto* v6only = addr.dual_stack ? sockopt_off_ptr : sockopt_on_ptr;
+            check_rv(setsockopt(sock_, IPPROTO_IPV6, IPV6_V6ONLY, v6only, sockopt_onoff_size), "setting v6only flag");
+        }
 
         // Enable ECN notification on packets we receive:
 #ifndef _WIN32
-        check_rv(setsockopt(
-                sock_, sockopt_proto, addr.is_ipv6() ? IPV6_RECVTCLASS : IP_RECVTOS, &sockopt_on, sizeof(sockopt_on)));
+        check_rv(
+                setsockopt(
+                        sock_,
+                        sockopt_proto,
+                        addr.is_ipv6() ? IPV6_RECVTCLASS : IP_RECVTOS,
+                        &sockopt_on,
+                        sizeof(sockopt_on)),
+                "enable ecn");
+#else
+        // Not supported before Windows 11 (and not in mingw)
+        // check_rv(WSASetRecvIPEcn(sock_, 1), "enable ecn");
 #endif
 
 #ifdef __APPLE__
@@ -157,33 +192,45 @@ namespace oxen::quic
 #else
         constexpr bool broken_os = false;
 #endif
+
         // Enable destination address info in the packet info:
         if (!broken_os)
-            check_rv(setsockopt(
-                    sock_,
-                    sockopt_proto,
-                    addr.is_ipv6() ? IPV6_RECVPKTINFO :
-#ifdef IP_RECVDSTADDR
-                                   IP_RECVDSTADDR,
+        {
+            check_rv(
+                    setsockopt(
+                            sock_,
+                            sockopt_proto,
+                            addr.is_ipv6() ? IPV6_RECVPKTINFO :
+#if defined(IP_RECVDSTADDR) && !defined(_WIN32)
+                                           IP_RECVDSTADDR,
 #else
-                                   IP_PKTINFO,
+                                           IP_PKTINFO,
 #endif
+                            sockopt_on_ptr,
+                            sockopt_onoff_size),
+                    "enable dest addr info");
+
 #ifdef _WIN32
-                    (const char*)
+            // On windows dual stack sockets we have to set IP_PKTINFO in addition to IPV6_PKTINFO
+            // to ensure we get dest addr for IPv4-mapped-IPv6 addresses.  (Don't do this under
+            // wine, though, because it completely breaks the socket under wine.)
+            if (!EMULATING_HELL && addr.is_ipv6() && addr.dual_stack)
+                check_rv(
+                        setsockopt(sock_, IPPROTO_IP, IP_PKTINFO, sockopt_on_ptr, sockopt_onoff_size),
+                        "enable ipv4 dest addr info");
 #endif
-                    &sockopt_on,
-                    sizeof(sockopt_on)));
+        }
 
         // Bind!
-        check_rv(bind(sock_, addr, addr.socklen()));
-        check_rv(getsockname(sock_, bound_, bound_.socklen_ptr()));
+        check_rv(bind(sock_, addr, addr.socklen()), "bind");
+        check_rv(getsockname(sock_, bound_, bound_.socklen_ptr()), "getsockname");
 
         // Make the socket non-blocking:
 #ifdef _WIN32
         u_long mode = 1;
         ioctlsocket(sock_, FIONBIO, &mode);
 #else
-        check_rv(fcntl(sock_, F_SETFL, O_NONBLOCK));
+        check_rv(fcntl(sock_, F_SETFL, O_NONBLOCK), "set non-blocking");
 #endif
 
         rev_.reset(event_new(
@@ -432,9 +479,22 @@ namespace oxen::quic
         auto* next_buf = const_cast<char*>(reinterpret_cast<const char*>(buf));
         int rv = 0;
         size_t sent = 0;
-        sockaddr* dest_sa = const_cast<Address&>(path.remote);
 
         const bool set_source_addr = bound_.is_any_addr() && !path.local.is_any_addr();
+
+#ifdef _WIN32
+        // On Windows, when using a dual-stack socket, IPv4 destinations must always be
+        // passed as IPv4-mapped-IPv6
+        std::optional<Address> mapped_remote;
+        if (bound_.is_ipv6() && path.remote.is_ipv4())
+            mapped_remote = path.remote.mapped_ipv4_as_ipv6();
+        const auto& remote = mapped_remote ? *mapped_remote : path.remote;
+#else
+        const auto& remote = path.remote;
+#endif
+
+        sockaddr* dest_sa = const_cast<Address&>(remote);
+
         const bool source_ipv4 = path.local.is_ipv4();
         union
         {
@@ -498,7 +558,7 @@ namespace oxen::quic
             hdr.msg_iov = &iov;
             hdr.msg_iovlen = 1;
             hdr.msg_name = dest_sa;
-            hdr.msg_namelen = path.remote.socklen();
+            hdr.msg_namelen = remote.socklen();
             hdr.msg_control = control.data();
             hdr.msg_controllen = control.size();
 
@@ -587,7 +647,7 @@ namespace oxen::quic
             hdr.msg_iov = &iovs[i];
             hdr.msg_iovlen = 1;
             hdr.msg_name = dest_sa;
-            hdr.msg_namelen = path.remote.socklen();
+            hdr.msg_namelen = remote.socklen();
 
             auto& control = controls[i];
             hdr.msg_control = control.data();
@@ -619,19 +679,19 @@ namespace oxen::quic
 
 #ifdef _WIN32
         // Microsoft renames everything but uses the same structure just to be obtuse:
-        WSABUF iov;
         WSAMSG hdr{};
+        WSABUF iov;
         hdr.lpBuffers = &iov;
         hdr.dwBufferCount = 1;
         hdr.name = dest_sa;
-        hdr.namelen = path.remote.socklen();
+        hdr.namelen = remote.socklen();
 #else
         msghdr hdr{};
         iovec iov;
         hdr.msg_iov = &iov;
         hdr.msg_iovlen = 1;
         hdr.msg_name = dest_sa;
-        hdr.msg_namelen = path.remote.socklen();
+        hdr.msg_namelen = remote.socklen();
 #endif
 
         alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in6_pktinfo))> control{};
@@ -645,7 +705,8 @@ namespace oxen::quic
         hdr_msg_controllen = control.size();
 
         auto* cm = CMSG_FIRSTHDR(&hdr);
-        size_t actual_size = set_ecn_cmsg(cm, ecn, source_ipv4);
+
+        size_t actual_size = set_ecn_cmsg(cm, ecn, remote.is_ipv4() || remote.is_ipv4_mapped_ipv6());
 
         if (set_source_addr)
         {
@@ -709,37 +770,36 @@ namespace oxen::quic
     {
         assert(path.remote.is_ipv4() || path.remote.is_ipv6());
 
-        const int ecn_type = path.remote.is_ipv4() ? QUIC_IPV4_ECN : IPV6_TCLASS;
-        ;
-
         for (auto cmsg = CMSG_FIRSTHDR(&hdr); cmsg; cmsg = CMSG_NXTHDR(&hdr, cmsg))
         {
-            if (cmsg->cmsg_level != (path.remote.is_ipv4() ? IPPROTO_IP : IPPROTO_IPV6) || cmsg->cmsg_len == 0)
+            if (cmsg->cmsg_len == 0)
                 continue;
 
-            // ECN flag:
-            if (cmsg->cmsg_type == ecn_type)
+            if (cmsg->cmsg_level == IPPROTO_IP)
             {
-                if (path.remote.is_ipv4())
+                if (cmsg->cmsg_type == QUIC_IPV4_ECN)
                     pkt_info.ecn = *reinterpret_cast<uint8_t*>(QUIC_CMSG_DATA(cmsg)) & QUIC_ECN_MASK;
-                else
+
+#if defined(IP_RECVDSTADDR) && !defined(_WIN32)
+                if (cmsg->cmsg_type == IP_RECVDSTADDR)
+                    path.local.set_addr(reinterpret_cast<const struct in_addr*>(QUIC_CMSG_DATA(cmsg)));
+#else
+                if (cmsg->cmsg_type == IP_PKTINFO)
+                    path.local.set_addr(&reinterpret_cast<const struct in_pktinfo*>(QUIC_CMSG_DATA(cmsg))->ipi_addr);
+#endif
+            }
+            else if (cmsg->cmsg_level == IPPROTO_IPV6)
+            {
+                if (cmsg->cmsg_type == QUIC_IPV6_ECN)
                 {
                     int tclass;
                     std::memcpy(&tclass, QUIC_CMSG_DATA(cmsg), sizeof(int));
                     pkt_info.ecn = static_cast<uint8_t>(tclass & QUIC_ECN_MASK);
                 }
-            }
 
-            // extract the destination address into path.local
-#ifdef IP_RECVDSTADDR
-            else if (cmsg->cmsg_type == IP_RECVDSTADDR)
-                path.local.set_addr(reinterpret_cast<const struct in_addr*>(QUIC_CMSG_DATA(cmsg)));
-#else
-            else if (cmsg->cmsg_type == IP_PKTINFO)
-                path.local.set_addr(&reinterpret_cast<const struct in_pktinfo*>(QUIC_CMSG_DATA(cmsg))->ipi_addr);
-#endif
-            else if (cmsg->cmsg_type == IPV6_PKTINFO)
-                path.local.set_addr(&reinterpret_cast<const struct in6_pktinfo*>(QUIC_CMSG_DATA(cmsg))->ipi6_addr);
+                if (cmsg->cmsg_type == IPV6_PKTINFO)
+                    path.local.set_addr(&reinterpret_cast<const struct in6_pktinfo*>(QUIC_CMSG_DATA(cmsg))->ipi6_addr);
+            }
         }
         log::trace(log_cat, "incoming packet path is {}", path);
     }
