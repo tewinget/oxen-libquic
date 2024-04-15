@@ -154,7 +154,7 @@ namespace oxen::quic
 #endif
                 source = std::move(path);
             }
-            else if (bool pem = starts_with(input, "-----"); pem || (starts_with(input, "\x30") && input.size() >= 48))
+            else if (bool pem = input.starts_with("-----"); pem || (input.starts_with("\x30") && input.size() >= 48))
             {
                 source = std::move(input);
                 update_datum();

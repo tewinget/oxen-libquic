@@ -38,7 +38,7 @@ namespace oxen::quic
     static constexpr void check_for_tls_creds()
     {
         static_assert(
-                (0 + ... + std::is_convertible_v<remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
+                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
                 "Endpoint listen/connect require exactly one std::shared_ptr<TLSCreds> argument");
     }
 
@@ -237,6 +237,7 @@ namespace oxen::quic
         void handle_ep_opt(opt::enable_datagrams dc);
         void handle_ep_opt(opt::outbound_alpns alpns);
         void handle_ep_opt(opt::inbound_alpns alpns);
+        void handle_ep_opt(opt::alpns alpns);
         void handle_ep_opt(opt::handshake_timeout timeout);
         void handle_ep_opt(dgram_data_callback dgram_cb);
         void handle_ep_opt(connection_established_callback conn_established_cb);

@@ -45,6 +45,12 @@ namespace oxen::quic
         inbound_alpns = std::move(alpns.alpns);
     }
 
+    void Endpoint::handle_ep_opt(opt::alpns alpns)
+    {
+        inbound_alpns = std::move(alpns.inout_alpns);
+        outbound_alpns = inbound_alpns;
+    }
+
     void Endpoint::handle_ep_opt(opt::handshake_timeout timeout)
     {
         handshake_timeout = timeout.timeout;
