@@ -33,11 +33,41 @@ namespace oxen::quic
     struct Packet
     {
         Path path;
+        bstring keep_alive;
         bstring_view data;
         ngtcp2_pkt_info pkt_info{};
 
-        /// Constructs a packet from a path and data:
+        /// Constructs a packet from a path and data view:
         Packet(Path p, bstring_view d) : path{std::move(p)}, data{std::move(d)} {}
+
+        /// Constructs a packet from a path and transferred data:
+        Packet(Path p, bstring&& d) : path{std::move(p)}, keep_alive{std::move(d)}, data{keep_alive} {}
+
+        Packet(const Packet& other) : path{other.path}, pkt_info{other.pkt_info}
+        {
+            if (not other.keep_alive.empty())
+            {
+                keep_alive = other.keep_alive;
+                data = {keep_alive};
+            }
+            else
+            {
+                data = other.data;
+            }
+        }
+
+        Packet(Packet&& other) : path{std::move(other.path)}, pkt_info{std::move(other.pkt_info)}
+        {
+            if (not other.keep_alive.empty())
+            {
+                keep_alive = std::move(other.keep_alive);
+                data = {keep_alive};
+            }
+            else
+            {
+                data = std::move(other.data);
+            }
+        }
 
         /// Constructs a packet from a local address, data, and the IP header; remote addr and ECN
         /// data are extracted from the header.

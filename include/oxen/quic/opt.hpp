@@ -149,7 +149,7 @@ namespace oxen::quic
         // take responsibility for passing packets into the Endpoint via Endpoint::manually_receive_packet(...)
         struct manual_routing
         {
-            using send_handler_t = std::function<void(Path, bstring_view)>;
+            using send_handler_t = std::function<void(const Path&, bstring_view)>;
 
           private:
             friend Endpoint;

@@ -378,7 +378,7 @@ namespace oxen::quic
         void send_or_queue_packet(
                 const Path& p, std::vector<std::byte> buf, uint8_t ecn, std::function<void(io_result)> callback = nullptr);
 
-        void send_version_negotiation(const ngtcp2_version_cid& vid, const Path& p);
+        void send_version_negotiation(const ngtcp2_version_cid& vid, Path p);
 
         void check_timeouts();
 

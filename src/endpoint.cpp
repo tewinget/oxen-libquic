@@ -847,7 +847,7 @@ namespace oxen::quic
         size_t bufsize = buf.size();
         auto res = send_packets(p, buf.data(), &bufsize, ecn, n_pkts);
 
-        if (res.blocked())
+        if (res.blocked() and not _manual_routing)
         {
             socket->when_writeable([this, p, buf = std::move(buf), ecn, cb = std::move(callback)]() mutable {
                 send_or_queue_packet(p, std::move(buf), ecn, std::move(cb));
@@ -857,7 +857,7 @@ namespace oxen::quic
             callback({});
     }
 
-    void Endpoint::send_version_negotiation(const ngtcp2_version_cid& vid, const Path& p)
+    void Endpoint::send_version_negotiation(const ngtcp2_version_cid& vid, Path p)
     {
         uint8_t rint;
         gnutls_rnd(GNUTLS_RND_RANDOM, &rint, 8);

@@ -821,7 +821,7 @@ namespace oxen::quic
             // We're blocked from a previous call, and haven't finished sending all our packets yet
             // so there's nothing to do for now (once the packets are fully sent we'll get called
             // again so that we can keep working on sending).
-            log::trace(log_cat, "Skipping this flush_streams call; we still have {} queued packets", n_packets);
+            log::debug(log_cat, "Skipping this flush_streams call; we still have {} queued packets", n_packets);
             return;
         }
 

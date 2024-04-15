@@ -237,7 +237,18 @@ namespace oxen::quic
                 ev_,
                 sock_,
                 EV_READ | EV_PERSIST,
-                [](evutil_socket_t, short, void* self) { static_cast<UDPSocket*>(self)->receive(); },
+                [](evutil_socket_t, short, void* self) {
+#ifndef NDEBUG
+                    check_rv(
+#endif
+                            static_cast<UDPSocket*>(self)
+                                    ->receive()
+#ifndef NDEBUG
+                                    .error_code,
+                            "udp::receive()")
+#endif
+                            ;
+                },
                 this));
         event_add(rev_.get(), nullptr);
 
@@ -508,14 +519,20 @@ namespace oxen::quic
         {
             std::memset(&source_addr, 0, sizeof(source_addr));
             if (source_ipv4)
+            {
 #ifdef _WIN32
                 source_addr.v4.ipi_addr
 #else
                 source_addr.v4.ipi_spec_dst
 #endif
                         = path.local.in4().sin_addr;
+                source_addr.v4.ipi_ifindex = 0;
+            }
             else
+            {
                 source_addr.v6.ipi6_addr = path.local.in6().sin6_addr;
+                source_addr.v6.ipi6_ifindex = 0;
+            }
         }
 
 #ifdef OXEN_LIBQUIC_UDP_GSO
@@ -693,7 +710,6 @@ namespace oxen::quic
         hdr.msg_name = dest_sa;
         hdr.msg_namelen = remote.socklen();
 #endif
-
         alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in6_pktinfo))> control{};
 #ifdef _WIN32
         hdr.Control.buf = control.data();
@@ -714,7 +730,7 @@ namespace oxen::quic
             cm->cmsg_level = source_cmsg_level;
             cm->cmsg_type = source_cmsg_type;
             cm->cmsg_len = CMSG_LEN(source_addrlen);
-            std::memcpy(QUIC_CMSG_DATA(cm), &source_addr, source_addrlen);
+            std::memcpy(QUIC_CMSG_DATA(cm), source_ipv4 ? (void*)&source_addr.v4 : (void*)&source_addr.v6, source_addrlen);
             actual_size += CMSG_SPACE(source_addrlen);
         }
 
@@ -740,8 +756,7 @@ namespace oxen::quic
             next_buf += bufsize[i];
 
             rv = sendmsg(sock_, &hdr, 0);
-            if (rv < 0)
-                break;
+            check_rv(rv, "sendmsg");
             assert(static_cast<size_t>(rv) == bufsize[i]);
 #endif
 
