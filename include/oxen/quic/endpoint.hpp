@@ -38,7 +38,7 @@ namespace oxen::quic
     static constexpr void check_for_tls_creds()
     {
         static_assert(
-                (0 + ... + std::is_convertible_v<remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
+                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
                 "Endpoint listen/connect require exactly one std::shared_ptr<TLSCreds> argument");
     }
 

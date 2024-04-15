@@ -171,18 +171,6 @@ namespace oxen::quic
         return {reinterpret_cast<const char*>(x.data()), x.size()};
     }
 
-    // Quasi-backport of C++20 str.starts_with/ends_with
-    template <typename T>
-    using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
-    inline constexpr bool starts_with(std::string_view str, std::string_view prefix)
-    {
-        return prefix.size() <= str.size() && str.substr(0, prefix.size()) == prefix;
-    }
-    inline constexpr bool ends_with(std::string_view str, std::string_view suffix)
-    {
-        return suffix.size() <= str.size() && str.substr(str.size() - suffix.size()) == suffix;
-    }
-
     std::chrono::steady_clock::time_point get_time();
     std::chrono::nanoseconds get_timestamp();
 

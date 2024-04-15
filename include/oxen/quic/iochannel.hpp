@@ -95,7 +95,7 @@ namespace oxen::quic
         template <
                 typename Class,
                 typename T,
-                typename Ret = remove_cvref_t<T>,
+                typename Ret = std::remove_cvref_t<T>,
                 typename EP = std::enable_if_t<std::is_base_of_v<IOChannel, Class>, Endpoint>>
         Ret call_get_accessor(T (Class::*getter)() const) const
         {
@@ -106,7 +106,7 @@ namespace oxen::quic
         // Wraps a Connection accessor member function pointer in a call_get for synchronous access
         // that always returns by value (even if the member function returns by reference) through
         // the IOChannel's connection pointer.  Throws if the Connection doesn't exist anymore.
-        template <typename T, typename Ret = remove_cvref_t<T>, typename EP = Endpoint>
+        template <typename T, typename Ret = std::remove_cvref_t<T>, typename EP = Endpoint>
         Ret call_get_accessor(T (Connection::*getter)() const) const
         {
             // This do-nothing static cast to force deferred instantiation until later on (when the
