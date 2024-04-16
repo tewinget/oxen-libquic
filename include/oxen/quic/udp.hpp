@@ -14,6 +14,7 @@ extern "C"
 #include <event2/event.h>
 
 #include <cstdint>
+#include <variant>
 
 #include "address.hpp"
 #include "types.hpp"
@@ -33,41 +34,24 @@ namespace oxen::quic
     struct Packet
     {
         Path path;
-        bstring keep_alive;
-        bstring_view data;
         ngtcp2_pkt_info pkt_info{};
+        std::variant<bstring_view, bstring> pkt_data;
+
+        template <typename Char = std::byte, typename = std::enable_if_t<sizeof(Char) == 1>>
+        std::basic_string_view<Char> data() const
+        {
+            return std::visit(
+                    [](const auto& d) {
+                        return std::basic_string_view<Char>{reinterpret_cast<const Char*>(d.data()), d.size()};
+                    },
+                    pkt_data);
+        }
 
         /// Constructs a packet from a path and data view:
-        Packet(Path p, bstring_view d) : path{std::move(p)}, data{std::move(d)} {}
+        Packet(Path p, bstring_view d) : path{std::move(p)}, pkt_data{std::move(d)} {}
 
         /// Constructs a packet from a path and transferred data:
-        Packet(Path p, bstring&& d) : path{std::move(p)}, keep_alive{std::move(d)}, data{keep_alive} {}
-
-        Packet(const Packet& other) : path{other.path}, pkt_info{other.pkt_info}
-        {
-            if (not other.keep_alive.empty())
-            {
-                keep_alive = other.keep_alive;
-                data = {keep_alive};
-            }
-            else
-            {
-                data = other.data;
-            }
-        }
-
-        Packet(Packet&& other) : path{std::move(other.path)}, pkt_info{std::move(other.pkt_info)}
-        {
-            if (not other.keep_alive.empty())
-            {
-                keep_alive = std::move(other.keep_alive);
-                data = {keep_alive};
-            }
-            else
-            {
-                data = std::move(other.data);
-            }
-        }
+        Packet(Path p, bstring&& d) : path{std::move(p)}, pkt_data{std::move(d)} {}
 
         /// Constructs a packet from a local address, data, and the IP header; remote addr and ECN
         /// data are extracted from the header.
