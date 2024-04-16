@@ -81,6 +81,22 @@ namespace oxen::quic
         return rv;
     }
 
+    // Same as above, but just logs, doesn't throw.
+    static void log_rv_error(int rv, std::string_view action)
+    {
+        std::optional<std::error_code> ec;
+#ifdef _WIN32
+        if (rv == SOCKET_ERROR)
+            ec.emplace(WSAGetLastError(), std::system_category());
+#else
+        if (rv == -1)
+            ec.emplace(errno, std::system_category());
+
+#endif
+        if (ec)
+            log::error(log_cat, "Got error {} ({}) during {}", ec->value(), ec->message(), action);
+    }
+
 #ifdef _WIN32
     std::mutex get_wsa_mutex;
     LPFN_WSASENDMSG WSASendMsg = nullptr;
@@ -237,7 +253,18 @@ namespace oxen::quic
                 ev_,
                 sock_,
                 EV_READ | EV_PERSIST,
-                [](evutil_socket_t, short, void* self) { static_cast<UDPSocket*>(self)->receive(); },
+                [](evutil_socket_t, short, void* self) {
+#ifndef NDEBUG
+                    log_rv_error(
+#endif
+                            static_cast<UDPSocket*>(self)
+                                    ->receive()
+#ifndef NDEBUG
+                                    .error_code,
+                            "udp::receive()")
+#endif
+                            ;
+                },
                 this));
         event_add(rev_.get(), nullptr);
 
@@ -693,7 +720,6 @@ namespace oxen::quic
         hdr.msg_name = dest_sa;
         hdr.msg_namelen = remote.socklen();
 #endif
-
         alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in6_pktinfo))> control{};
 #ifdef _WIN32
         hdr.Control.buf = control.data();
@@ -766,7 +792,7 @@ namespace oxen::quic
                  {static_cast<const sockaddr*>(hdr.msg_name), hdr.msg_namelen}
 #endif
             },
-            data{data}
+            pkt_data{data}
     {
         assert(path.remote.is_ipv4() || path.remote.is_ipv6());
 

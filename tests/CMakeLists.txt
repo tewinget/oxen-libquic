@@ -37,6 +37,7 @@ if(LIBQUIC_BUILD_TESTS)
         008-conn_hooks.cpp
         009-alpns.cpp
         010-migration.cpp
+        011-manual_transmission.cpp
 
         main.cpp
         case_logger.cpp
