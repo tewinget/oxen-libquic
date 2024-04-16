@@ -856,7 +856,7 @@ namespace oxen::quic
             });
         }
         else if (callback)
-            callback({});
+            callback(res);
     }
 
     void Endpoint::send_version_negotiation(const ngtcp2_version_cid& vid, Path p)
