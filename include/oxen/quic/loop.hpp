@@ -24,6 +24,8 @@ namespace oxen::quic
 
     class Loop
     {
+        friend class Network;
+
       protected:
         std::atomic<bool> running{false};
         std::shared_ptr<::event_base> ev_loop;

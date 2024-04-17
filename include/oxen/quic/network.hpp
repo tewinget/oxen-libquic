@@ -18,6 +18,7 @@ namespace oxen::quic
     {
       public:
         Network(std::shared_ptr<::event_base> loop_ptr, std::thread::id loop_thread_id);
+        Network(std::shared_ptr<Loop> ev_loop);
         Network();
         ~Network();
 
