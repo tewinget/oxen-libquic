@@ -15,7 +15,12 @@ namespace oxen::quic
     Network::Network(std::shared_ptr<event_base> loop_ptr, std::thread::id thread_id) :
             _loop{std::make_shared<Loop>(std::move(loop_ptr), thread_id)}
     {
-        log::trace(log_cat, "Created network context with pre-existing ev loop thread");
+        log::trace(log_cat, "Created network context with pre-existing libevent loop and thread!");
+    }
+
+    Network::Network(std::shared_ptr<Loop> ev_loop) : _loop{std::move(ev_loop)}
+    {
+        log::trace(log_cat, "Creating network context with pre-existing event loop!");
     }
 
     Network::Network() : _loop{std::make_shared<Loop>()} {}
