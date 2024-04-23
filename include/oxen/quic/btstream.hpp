@@ -225,7 +225,10 @@ namespace oxen::quic
             auto req = std::make_shared<sent_request>(*this, encode_command(ep, rid, body), rid, std::forward<Opt>(opts)...);
 
             if (req->cb)
-                endpoint.call([this, r = std::move(req)]() { send(sent_reqs.emplace_back(std::move(r))->view()); });
+                endpoint.call([this, r = std::move(req)]() mutable {
+                    if (auto* req = add_sent_request(std::move(r)))
+                        send(req->view());
+                });
             else
                 send(std::move(*req).payload());
         }
@@ -274,6 +277,8 @@ namespace oxen::quic
         std::string encode_command(std::string_view endpoint, int64_t rid, bstring_view body);
 
         std::string encode_response(int64_t rid, bstring_view body, bool error);
+
+        sent_request* add_sent_request(std::shared_ptr<sent_request> req);
 
         size_t parse_length(std::string_view req);
 

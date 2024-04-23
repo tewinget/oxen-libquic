@@ -117,17 +117,7 @@ namespace oxen::quic
         // being closed and so they can never be answered.
         check_timeouts(std::nullopt);
 
-        if (close_callback)
-        {
-            try
-            {
-                close_callback(*this, app_code);
-            }
-            catch (const std::exception& e)
-            {
-                log::error(bp_cat, "Uncaught exception from bparser stream close callback: {}", e.what());
-            }
-        }
+        Stream::close(app_code);
     }
 
     void BTRequestStream::register_handler(std::string ep, std::function<void(message)> func)
@@ -299,6 +289,31 @@ namespace oxen::quic
         btlp.append(body);
 
         return std::move(btlp).str();
+    }
+
+    sent_request* BTRequestStream::add_sent_request(std::shared_ptr<sent_request> req)
+    {
+        if (is_closing())
+        {
+            // The stream is already dead, so fire the failure callback as a timeout right away and
+            // drop the request, since we know it can never complete.  (This isn't necessarily the
+            // application's fault: the closing could have started while queuing this new command
+            // for the event loop).
+            auto& f = *req;
+            if (f.cb)
+            {
+                try
+                {
+                    f.cb(std::move(f).to_timeout());
+                }
+                catch (const std::exception& e)
+                {
+                    log::error(bp_cat, "Uncaught exception from closed-stream sent request response handler: {}", e.what());
+                }
+            }
+            return nullptr;
+        }
+        return sent_reqs.emplace_back(std::move(req)).get();
     }
 
     /** Returns:
