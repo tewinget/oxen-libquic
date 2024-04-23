@@ -93,6 +93,24 @@ namespace oxen::quic
         });
     }
 
+    void Stream::closed(uint64_t app_code)
+    {
+        if (close_callback)
+        {
+            try
+            {
+                close_callback(*this, app_code);
+            }
+            catch (const std::exception& e)
+            {
+                log::error(log_cat, "Uncaught exception in stream close callback: {}", e.what());
+            }
+        }
+
+        _conn = nullptr;
+        _is_closing = _is_shutdown = true;
+    }
+
     void Stream::append_buffer(bstring_view buffer, std::shared_ptr<void> keep_alive)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
