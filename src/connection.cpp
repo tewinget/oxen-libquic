@@ -634,6 +634,8 @@ namespace oxen::quic
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
         return _endpoint.call_get([this, &make_stream]() {
+            if (is_closing() || is_draining())
+                throw connection_closed_error{"Unable to queue incoming stream: connection is closed"};
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
@@ -660,6 +662,8 @@ namespace oxen::quic
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
         return _endpoint.call_get([this, &make_stream]() {
+            if (is_closing() || is_draining())
+                throw connection_closed_error{"Unable to open a stream: connection is closed"};
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
