@@ -1048,8 +1048,8 @@ namespace oxen::quic::test
         // whether or not the open/queue won the race to the event loop before the connection close
         // gets processed.
         //
-        // We avoid it now by throwing if you attempt to queue or open a stream on a
-        // closed/closing/draining connection.
+        // We avoid it now by immediately firing the stream's close callback in such a case and not
+        // queuing it or attempting to actually open it on the network layer.
         //
         auto client_established = callback_waiter{[](connection_interface&) {}};
         auto client_closed = callback_waiter{[](connection_interface&, uint64_t) {}};
@@ -1076,8 +1076,12 @@ namespace oxen::quic::test
         // actually hits the libquic event loop).
         REQUIRE(client_closed.wait());
 
-        CHECK_THROWS_AS(conn->open_stream(), quic::connection_closed_error);
-        CHECK_THROWS_AS(conn->queue_incoming_stream(), quic::connection_closed_error);
+        auto s1 = conn->open_stream();
+        CHECK(s1->is_closing());
+        CHECK_FALSE(s1->available());
+        auto s2 = conn->queue_incoming_stream();
+        CHECK(s2->is_closing());
+        CHECK_FALSE(s2->available());
         CHECK(conn->num_streams_active() == 0);
         CHECK(conn->num_streams_pending() == 0);
     }
