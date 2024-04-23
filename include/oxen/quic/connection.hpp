@@ -241,6 +241,14 @@ namespace oxen::quic
         virtual size_t get_max_datagram_size_impl() = 0;
     };
 
+    // Exception thrown if attempting to open or queue a stream on a Connection that is closing or
+    // closed.
+    class connection_closed_error : public std::runtime_error
+    {
+      public:
+        using std::runtime_error::runtime_error;
+    };
+
     class Connection : public connection_interface
     {
         friend class TestHelper;
