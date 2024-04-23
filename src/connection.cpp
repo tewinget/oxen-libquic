@@ -635,8 +635,6 @@ namespace oxen::quic
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
         return _endpoint.call_get([this, &make_stream]() {
-            if (is_closing() || is_draining())
-                throw connection_closed_error{"Unable to queue incoming stream: connection is closed"};
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
@@ -648,6 +646,22 @@ namespace oxen::quic
             next_incoming_stream_id += 4;
 
             log::trace(log_cat, "{} queuing new incoming stream for id {}", direction_str(), stream->_stream_id);
+
+            // If the connection is closing/draining then immediately close it (rather than adding
+            // it to the queue), so that what we give back is a closed stream but that has had its
+            // steam close callback fired to do any cleanup it needs.  Although this feels slightly
+            // weird, it's less clunky than forcing application code to try/catch or worry about a
+            // nullptr return from this function.
+            if (is_closing() || is_draining())
+            {
+                log::debug(
+                        log_cat,
+                        "closing newly queued stream {} immediately; this connection is closed",
+                        stream->_stream_id);
+                stream_execute_close(*stream, STREAM_ERROR_CONNECTION_CLOSED);
+                return stream;
+            }
+
             auto& str = _stream_queue[stream->_stream_id];
             str = std::move(stream);
             return str;
@@ -663,8 +677,6 @@ namespace oxen::quic
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
         return _endpoint.call_get([this, &make_stream]() {
-            if (is_closing() || is_draining())
-                throw connection_closed_error{"Unable to open a stream: connection is closed"};
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
@@ -672,6 +684,16 @@ namespace oxen::quic
                 stream = construct_stream(make_stream);
 
             assert(!stream->_ready);
+
+            if (is_closing() || is_draining())
+            {
+                log::debug(
+                        log_cat,
+                        "closing newly opened stream {} immediately; this connection is closed",
+                        stream->_stream_id);
+                stream_execute_close(*stream, STREAM_ERROR_CONNECTION_CLOSED);
+                return stream;
+            }
 
             if (int rv = ngtcp2_conn_open_bidi_stream(conn.get(), &stream->_stream_id, stream.get()); rv != 0)
             {
