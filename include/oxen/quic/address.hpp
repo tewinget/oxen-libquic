@@ -360,6 +360,10 @@ namespace oxen::quic
             return *this;
         }
 
+        bool operator==(const Path& other) const { return std::tie(local, remote) == std::tie(other.local, other.remote); }
+
+        bool operator!=(const Path& other) const { return !(*this == other); }
+
         // template code to pass Path as ngtcp2_path into ngtcp2 functions
         template <typename T>
             requires std::same_as<T, ngtcp2_path>
@@ -407,6 +411,17 @@ namespace std
 
             auto h = hash<string_view>{}(addr_data);
             h ^= hash<decltype(port)>{}(port) + inverse_golden_ratio + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+
+    template <>
+    struct hash<oxen::quic::Path>
+    {
+        size_t operator()(const oxen::quic::Path& addr) const
+        {
+            auto h = hash<oxen::quic::Address>{}(addr.local);
+            h ^= hash<oxen::quic::Address>{}(addr.remote);
             return h;
         }
     };
