@@ -10,7 +10,7 @@ namespace oxen::quic::test
     TEST_CASE("010 - Migration", "[010][migration]")
     {
         Network test_net{};
-        auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
 
         auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
 

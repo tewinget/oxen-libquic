@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "formattable.hpp"
 #include "utils.hpp"
 

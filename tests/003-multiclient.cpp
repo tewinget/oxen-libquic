@@ -31,7 +31,7 @@ namespace oxen::quic::test
     TEST_CASE("003 - Multi-client to server transmission: Execution", "[003][multi-client][execute]")
     {
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::atomic<int> data_check{0};
         std::vector<std::promise<void>> stream_promises{4};

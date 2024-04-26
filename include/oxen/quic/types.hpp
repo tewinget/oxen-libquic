@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef _WIN32
+#include <array>
+#endif
+
 #include "utils.hpp"
 
 namespace oxen::quic

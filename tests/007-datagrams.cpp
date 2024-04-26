@@ -153,7 +153,7 @@ namespace oxen::quic::test
             auto client_established = callback_waiter{[](connection_interface&) {}};
 
             Network test_net{};
-            auto msg = "hello from the other siiiii-iiiiide"_bsv;
+            constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
             std::promise<void> data_promise;
             std::future<void> data_future = data_promise.get_future();

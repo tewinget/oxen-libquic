@@ -647,7 +647,8 @@ namespace oxen::quic
     std::optional<quic_cid> Endpoint::handle_packet_connid(const Packet& pkt)
     {
         ngtcp2_version_cid vid;
-        auto rv = ngtcp2_pkt_decode_version_cid(&vid, u8data(pkt.data), pkt.data.size(), NGTCP2_MAX_CIDLEN);
+        auto data = pkt.data<uint8_t>();
+        auto rv = ngtcp2_pkt_decode_version_cid(&vid, data.data(), data.size(), NGTCP2_MAX_CIDLEN);
 
         if (rv == NGTCP2_ERR_VERSION_NEGOTIATION)
         {  // version negotiation has not been sent yet, ignore packet
@@ -679,7 +680,8 @@ namespace oxen::quic
 
         ngtcp2_pkt_hd hdr;
 
-        auto rv = ngtcp2_accept(&hdr, u8data(pkt.data), pkt.data.size());
+        auto data = pkt.data<uint8_t>();
+        auto rv = ngtcp2_accept(&hdr, data.data(), data.size());
 
         if (rv < 0)  // catches all other possible ngtcp2 errors
         {
@@ -687,7 +689,7 @@ namespace oxen::quic
                     log_cat,
                     "Unknown packet received from {}, length={}, code={}; ignoring it.",
                     pkt.path.remote,
-                    pkt.data.size(),
+                    data.size(),
                     ngtcp2_strerror(rv));
             return nullptr;
         }

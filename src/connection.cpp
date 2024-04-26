@@ -524,7 +524,8 @@ namespace oxen::quic
     {
         auto ts = get_timestamp().count();
         log::trace(log_cat, "Calling ngtcp2_conn_read_pkt...");
-        auto rv = ngtcp2_conn_read_pkt(*this, pkt.path, &pkt.pkt_info, u8data(pkt.data), pkt.data.size(), ts);
+        auto data = pkt.data<uint8_t>();
+        auto rv = ngtcp2_conn_read_pkt(*this, pkt.path, &pkt.pkt_info, data.data(), data.size(), ts);
 
         switch (rv)
         {

@@ -11,6 +11,8 @@
 
 namespace oxen::quic
 {
+    using namespace oxenc::literals;
+
     class Connection;
 
     const std::string translate_key_format(gnutls_x509_crt_fmt_t crt);
@@ -49,9 +51,9 @@ namespace oxen::quic
     inline constexpr size_t GNUTLS_SECRET_KEY_SIZE = 64;
 
     // These bytes mean "this is a raw Ed25519 private key" in ASN.1 (or something like that)
-    inline const std::string ASN_ED25519_SEED_PREFIX = oxenc::from_hex("302e020100300506032b657004220420"sv);
+    inline constexpr auto ASN_ED25519_SEED_PREFIX = "302e020100300506032b657004220420"_hex;
     // These bytes mean "this is a raw Ed25519 public key" in ASN.1 (or something like that)
-    inline const std::string ASN_ED25519_PUBKEY_PREFIX = oxenc::from_hex("302a300506032b6570032100"sv);
+    inline constexpr auto ASN_ED25519_PUBKEY_PREFIX = "302a300506032b6570032100"_hex;
 
     struct gnutls_key
     {
@@ -217,7 +219,8 @@ namespace oxen::quic
         //
         // Hidden behind a template so that implicit conversion to pointer doesn't cause trouble via
         // other unwanted implicit conversions.
-        template <typename T, std::enable_if_t<std::is_same_v<T, gnutls_datum_t>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, gnutls_datum_t>
         operator const T*() const
         {
             return &mem;
@@ -238,7 +241,8 @@ namespace oxen::quic
         //
         // Hidden behind a template so that implicit conversion to pointer doesn't cause trouble via
         // other unwanted implicit conversions.
-        template <typename T, std::enable_if_t<std::is_same_v<T, char>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, char>
         operator const T*() const
         {
             if (auto* p = std::get_if<fs::path>(&source))
@@ -261,7 +265,7 @@ namespace oxen::quic
 
       private:
         // Construct from raw Ed25519 keys
-        GNUTLSCreds(std::string ed_seed, std::string ed_pubkey);
+        GNUTLSCreds(std::string_view ed_seed, std::string_view ed_pubkey);
 
       public:
         gnutls_pcert_st pcrt;
@@ -281,9 +285,9 @@ namespace oxen::quic
 
         void set_key_verify_callback(key_verify_callback cb) { key_verify = std::move(cb); }
 
-        static std::shared_ptr<GNUTLSCreds> make_from_ed_keys(std::string seed, std::string pubkey);
+        static std::shared_ptr<GNUTLSCreds> make_from_ed_keys(std::string_view seed, std::string_view pubkey);
 
-        static std::shared_ptr<GNUTLSCreds> make_from_ed_seckey(std::string sk);
+        static std::shared_ptr<GNUTLSCreds> make_from_ed_seckey(std::string_view sk);
 
         std::unique_ptr<TLSSession> make_session(Connection& c, const std::vector<ustring>& alpns) override;
     };

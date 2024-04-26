@@ -508,10 +508,10 @@ namespace oxen::quic::test
         // Instead of using randomly generated seeds and pubkeys, hardcoded strings are used to deterministically
         // produce the same test result. The key verify callback compares the pubkeys in lexicographical order,
         // deferring to the connetion initiated by the pubkey that appears first in said order.
-        const std::string C_SEED = "468e7ed2cd914ca44568e7189245c7b8e5488404fc88a4019c73b51d9dbc48a5"_hex;
-        const std::string C_PUBKEY = "626136fe40c8860ee5bdc57fd9f15a03ef6777bb9237c18fc4d7ef2aacfe4f88"_hex;
-        const std::string S_SEED = "fefbb50cdd4cde3be0ae75042c44ff42b026def4fd6be4fb1dc6e81ea0480c9b"_hex;
-        const std::string S_PUBKEY = "d580d5c68937095ea997f6a88f07a86cdd26dfa0d7d268e80ea9bbb5f3ca0304"_hex;
+        constexpr auto C_SEED = "468e7ed2cd914ca44568e7189245c7b8e5488404fc88a4019c73b51d9dbc48a5"_hex;
+        constexpr auto C_PUBKEY = "626136fe40c8860ee5bdc57fd9f15a03ef6777bb9237c18fc4d7ef2aacfe4f88"_hex;
+        constexpr auto S_SEED = "fefbb50cdd4cde3be0ae75042c44ff42b026def4fd6be4fb1dc6e81ea0480c9b"_hex;
+        constexpr auto S_PUBKEY = "d580d5c68937095ea997f6a88f07a86cdd26dfa0d7d268e80ea9bbb5f3ca0304"_hex;
 
         Network test_net{};
 
@@ -524,11 +524,11 @@ namespace oxen::quic::test
         std::vector<std::array<std::string, 3>> defer_i_l_r;  // incoming/local/remote
 
         auto defer_hook = [&defer_i_l_r](
-                                  const std::string& incoming,
-                                  const std::string& local,
-                                  const std::string& remote,
+                                  std::string_view incoming,
+                                  std::string_view local,
+                                  std::string_view remote,
                                   std::shared_ptr<connection_interface> local_outbound) -> bool {
-            defer_i_l_r.push_back({incoming, local, remote});
+            defer_i_l_r.push_back({std::string{incoming}, std::string{local}, std::string{remote}});
 
             // If the LHS parameter to std::strcmp appears FIRST in lexicographical order, then rv < 0. As a result,
             // if the incoming pubkey appears BEFORE the server pubkey in lexicographical order, we will defer to the
@@ -545,8 +545,7 @@ namespace oxen::quic::test
 
         server_tls->set_key_verify_callback([&](const ustring_view& key, const ustring_view&) {
             std::lock_guard lock{ci_mutex};
-            return defer_hook(
-                    std::string{reinterpret_cast<const char*>(key.data()), key.size()}, S_PUBKEY, C_PUBKEY, server_ci);
+            return defer_hook({reinterpret_cast<const char*>(key.data()), key.size()}, S_PUBKEY, C_PUBKEY, server_ci);
         });
 
         client_tls->set_key_verify_callback([&](const ustring_view& key, const ustring_view&) {

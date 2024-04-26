@@ -14,6 +14,7 @@ extern "C"
 #include <event2/event.h>
 
 #include <cstdint>
+#include <variant>
 
 #include "address.hpp"
 #include "types.hpp"
@@ -33,11 +34,24 @@ namespace oxen::quic
     struct Packet
     {
         Path path;
-        bstring_view data;
         ngtcp2_pkt_info pkt_info{};
+        std::variant<bstring_view, bstring> pkt_data;
 
-        /// Constructs a packet from a path and data:
-        Packet(Path p, bstring_view d) : path{std::move(p)}, data{std::move(d)} {}
+        template <oxenc::basic_char Char = std::byte>
+        std::basic_string_view<Char> data() const
+        {
+            return std::visit(
+                    [](const auto& d) {
+                        return std::basic_string_view<Char>{reinterpret_cast<const Char*>(d.data()), d.size()};
+                    },
+                    pkt_data);
+        }
+
+        /// Constructs a packet from a path and data view:
+        Packet(Path p, bstring_view d) : path{std::move(p)}, pkt_data{std::move(d)} {}
+
+        /// Constructs a packet from a path and transferred data:
+        Packet(Path p, bstring&& d) : path{std::move(p)}, pkt_data{std::move(d)} {}
 
         /// Constructs a packet from a local address, data, and the IP header; remote addr and ECN
         /// data are extracted from the header.
