@@ -118,6 +118,8 @@ namespace oxen::quic
 
         std::shared_ptr<Stream> get_stream() override;
 
+        std::shared_ptr<connection_interface> get_conn_interface();
+
         void close(uint64_t app_err_code = 0);
 
         void set_stream_data_cb(stream_data_callback cb) { data_callback = std::move(cb); }

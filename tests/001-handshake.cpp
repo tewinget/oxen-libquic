@@ -106,6 +106,39 @@ namespace oxen::quic::test
             CHECK_FALSE(public_ipv6.is_loopback());
         }
 
+        SECTION("Object serialization", "[serialization]")
+        {
+            Address addr{"127.0.0.1", 4400};
+            auto addr_str = addr.bt_encode();
+            oxenc::bt_dict_consumer addr_btdc{addr_str};
+            Address maybe_addr;
+
+            REQUIRE_NOTHROW(maybe_addr = *Address::bt_decode(addr_btdc));
+            REQUIRE(addr == maybe_addr);
+
+            Address local{"127.0.0.1", 5566}, remote{"127.0.0.1", 3257};
+
+            Path p{local, remote};
+            auto path_str = p.bt_encode();
+            oxenc::bt_dict_consumer path_btdc{path_str};
+            Path maybe_path;
+
+            REQUIRE_NOTHROW(maybe_path = *Path::bt_decode(path_btdc));
+            REQUIRE(p == maybe_path);
+
+            bstring payload = "goodmorning"_bs;
+            Packet pkt{p, payload};
+            auto pkt_str = pkt.bt_encode();
+            std::optional<Packet> maybe_pkt;
+
+            REQUIRE_NOTHROW(
+                    maybe_pkt =
+                            *Packet::bt_decode(bstring{reinterpret_cast<const std::byte*>(pkt_str.data()), pkt_str.size()}));
+
+            REQUIRE(*maybe_pkt == pkt);
+            REQUIRE(pkt_str == maybe_pkt->bt_encode());
+        }
+
         SECTION("IP Address Ranges", "[range][operators][ipaddr]")
         {
             CHECK((ipv4(10, 0, 0, 0) / 8).contains(ipv4(10, 0, 0, 0)));

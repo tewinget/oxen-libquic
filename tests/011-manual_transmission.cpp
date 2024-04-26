@@ -82,28 +82,59 @@ namespace oxen::quic::test
 
         opt::enable_datagrams enable_dgrams{Splitting::ACTIVE};
 
-        dgram_data_callback vanilla_client_recv_dgram_cb = [&](dgram_interface&, bstring data) {
-            manual_client->manually_receive_packet(Packet{Path{}, std::move(data)});
-        };
-
-        dgram_data_callback vanilla_server_recv_dgram_cb = [&](dgram_interface&, bstring data) {
-            manual_server->manually_receive_packet(Packet{Path{}, std::move(data)});
-        };
-
-        opt::manual_routing manual_client_sender{
-                [&](const Path&, bstring_view d) { vanilla_client_ci->send_datagram(bstring{d}); }};
-
-        opt::manual_routing manual_server_sender{
-                [&](const Path&, bstring_view d) { vanilla_server_ci->send_datagram(bstring{d}); }};
-
         auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
 
-        vanilla_server = test_net.endpoint(
-                vanilla_server_addr, vanilla_server_established, enable_dgrams, vanilla_server_recv_dgram_cb);
-        vanilla_client = test_net.endpoint(
-                vanilla_client_addr, vanilla_client_established, enable_dgrams, vanilla_client_recv_dgram_cb);
-        manual_client = test_net.endpoint(manual_client_addr, manual_client_sender, manual_client_established);
-        manual_server = test_net.endpoint(manual_server_addr, manual_server_sender, manual_server_established);
+        // The receiving (remote) end of the tunnel composes the packet
+        SECTION("Receiv-side packet reconstruction")
+        {
+            dgram_data_callback vanilla_client_recv_dgram_cb = [&](dgram_interface&, bstring data) {
+                manual_client->manually_receive_packet(Packet{Path{}, std::move(data)});
+            };
+
+            dgram_data_callback vanilla_server_recv_dgram_cb = [&](dgram_interface&, bstring data) {
+                manual_server->manually_receive_packet(Packet{Path{}, std::move(data)});
+            };
+
+            opt::manual_routing manual_client_sender{
+                    [&](const Path&, bstring_view d) { vanilla_client_ci->send_datagram(bstring{d}); }};
+
+            opt::manual_routing manual_server_sender{
+                    [&](const Path&, bstring_view d) { vanilla_server_ci->send_datagram(bstring{d}); }};
+
+            vanilla_server = test_net.endpoint(
+                    vanilla_server_addr, vanilla_server_established, enable_dgrams, vanilla_server_recv_dgram_cb);
+            vanilla_client = test_net.endpoint(
+                    vanilla_client_addr, vanilla_client_established, enable_dgrams, vanilla_client_recv_dgram_cb);
+            manual_client = test_net.endpoint(manual_client_addr, manual_client_sender, manual_client_established);
+            manual_server = test_net.endpoint(manual_server_addr, manual_server_sender, manual_server_established);
+        }
+
+        // The sender (local) of the packet bt-encodes the packet prior to tranmission
+        SECTION("Send-side packet construction")
+        {
+            dgram_data_callback vanilla_client_recv_dgram_cb = [&](dgram_interface&, bstring data) {
+                manual_client->manually_receive_packet(*Packet::bt_decode(std::move(data)));
+            };
+
+            dgram_data_callback vanilla_server_recv_dgram_cb = [&](dgram_interface&, bstring data) {
+                manual_server->manually_receive_packet(*Packet::bt_decode(std::move(data)));
+            };
+
+            opt::manual_routing manual_client_sender{[&](const Path& p, bstring_view d) {
+                vanilla_client_ci->send_datagram(Packet{p, bstring{d}}.bt_encode());
+            }};
+
+            opt::manual_routing manual_server_sender{[&](const Path& p, bstring_view d) {
+                vanilla_server_ci->send_datagram(Packet{p, bstring{d}}.bt_encode());
+            }};
+
+            vanilla_server = test_net.endpoint(
+                    vanilla_server_addr, vanilla_server_established, enable_dgrams, vanilla_server_recv_dgram_cb);
+            vanilla_client = test_net.endpoint(
+                    vanilla_client_addr, vanilla_client_established, enable_dgrams, vanilla_client_recv_dgram_cb);
+            manual_client = test_net.endpoint(manual_client_addr, manual_client_sender, manual_client_established);
+            manual_server = test_net.endpoint(manual_server_addr, manual_server_sender, manual_server_established);
+        }
 
         REQUIRE_NOTHROW(vanilla_server->listen(server_tls));
         REQUIRE_NOTHROW(manual_server->listen(server_tls));

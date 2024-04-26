@@ -1,5 +1,7 @@
 #pragma once
 
+#include <oxenc/bt.h>
+
 #include "formattable.hpp"
 #include "ip.hpp"
 #include "utils.hpp"
@@ -292,11 +294,17 @@ namespace oxen::quic
         // sockaddr pointer).
         void update_socklen(socklen_t len) { _addr.addrlen = len; }
 
-        std::string host() const;
+        std::string host(bool no_format = false) const;
 
         // Convenience method for debugging, etc.  This is usually called implicitly by passing the
         // Address to fmt to format it.
         std::string to_string() const;
+
+        std::string bt_encode() const;
+
+        void bt_encode(oxenc::bt_dict_producer& btdp) const;
+
+        static std::optional<Address> bt_decode(oxenc::bt_dict_consumer& btdc);
     };
 
     struct RemoteAddress : public Address
@@ -381,6 +389,12 @@ namespace oxen::quic
         Path invert() const { return {remote, local}; }
 
         std::string to_string() const;
+
+        std::string bt_encode() const;
+
+        void bt_encode(oxenc::bt_dict_producer& btdp) const;
+
+        static std::optional<Path> bt_decode(oxenc::bt_dict_consumer& btdc);
     };
 }  // namespace oxen::quic
 

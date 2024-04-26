@@ -3,8 +3,7 @@
 #include <stdexcept>
 
 #include "address.hpp"
-#include "crypto.hpp"
-#include "types.hpp"
+#include "connection_ids.hpp"
 
 namespace oxen::quic
 {

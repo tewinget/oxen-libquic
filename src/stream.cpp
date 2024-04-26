@@ -214,6 +214,11 @@ namespace oxen::quic
     {
         return endpoint.call_get([this]() { return _is_writing; });
     }
+    
+    std::shared_ptr<connection_interface> Stream::get_conn_interface()
+    {
+        return std::static_pointer_cast<connection_interface>(_conn->shared_from_this());
+    }
 
     bool Stream::available() const
     {

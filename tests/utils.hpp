@@ -17,7 +17,7 @@
 
 namespace oxen::quic
 {
-    extern bool disable_ipv6, disable_rotating_buffer;
+    extern bool disable_ipv6, disable_rotating_buffer, enable_tunnel_tests;
 
     namespace log = oxen::log;
     using namespace log::literals;
