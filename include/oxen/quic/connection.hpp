@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -24,6 +25,9 @@ namespace oxen::quic
     inline constexpr uint64_t MAX_ACTIVE_CIDS{8};
     inline constexpr size_t NGTCP2_RETRY_SCIDLEN{18};
 
+    template <typename T>
+    concept StreamDerived = std::derived_from<T, Stream>;
+
     class connection_interface : public std::enable_shared_from_this<connection_interface>
     {
       protected:
@@ -41,11 +45,7 @@ namespace oxen::quic
         /// ID; it will be made ready once the associated stream id is seen from the remote
         /// connection.  Note that this constructor bypasses the stream constructor callback for the
         /// applicable stream id.
-        template <
-                typename StreamT,
-                typename... Args,
-                typename EndpointDeferred = Endpoint,
-                std::enable_if_t<std::is_base_of_v<Stream, StreamT>, int> = 0>
+        template <StreamDerived StreamT, typename... Args, typename EndpointDeferred = Endpoint>
         std::shared_ptr<StreamT> queue_incoming_stream(Args&&... args)
         {
             // We defer resolution of `Endpoint` here via `EndpointDeferred` because the header only
@@ -70,11 +70,8 @@ namespace oxen::quic
         /// such as from an increase in available stream ids resulting from the closure of an
         /// existing stream.  Note that this constructor bypasses the stream constructor callback
         /// for the applicable stream id.
-        template <
-                typename StreamT,
-                typename... Args,
-                typename EndpointDeferred = Endpoint,
-                std::enable_if_t<std::is_base_of_v<Stream, StreamT>, int> = 0>
+        template <StreamDerived StreamT, typename... Args, typename EndpointDeferred = Endpoint>
+            requires std::derived_from<StreamT, Stream>
         std::shared_ptr<StreamT> open_stream(Args&&... args)
         {
             return std::static_pointer_cast<StreamT>(open_stream_impl([&](Connection& c, EndpointDeferred& e) {
@@ -93,13 +90,13 @@ namespace oxen::quic
         /// StreamT is specified, is of the given Stream subclass).  Returns nullptr if the id is
         /// not currently an open stream; throws std::invalid_argument if the stream exists but is
         /// not an instance of the given StreamT type.
-        template <typename StreamT = Stream, std::enable_if_t<std::is_base_of_v<Stream, StreamT>, int> = 0>
+        template <StreamDerived StreamT = Stream>
         std::shared_ptr<StreamT> maybe_stream(int64_t id)
         {
             auto s = get_stream_impl(id);
             if (!s)
                 return nullptr;
-            if constexpr (!std::is_same_v<StreamT, Stream>)
+            if constexpr (!std::same_as<StreamT, Stream>)
             {
                 if (auto st = std::dynamic_pointer_cast<StreamT>(std::move(s)))
                     return st;
@@ -114,7 +111,7 @@ namespace oxen::quic
         /// StreamT is specified, is of the given Stream subclass).  Otherwise throws
         /// std::out_of_range if the stream was not found, and std::invalid_argument if the stream
         /// was found, but is not an instance of StreamT.
-        template <typename StreamT = Stream, std::enable_if_t<std::is_base_of_v<Stream, StreamT>, int> = 0>
+        template <StreamDerived StreamT = Stream>
         std::shared_ptr<StreamT> get_stream(int64_t id)
         {
             if (auto s = maybe_stream<StreamT>(id))
@@ -122,15 +119,14 @@ namespace oxen::quic
             throw std::out_of_range{"Could not find a stream with ID " + std::to_string(id)};
         }
 
-        template <
-                typename CharType,
-                std::enable_if_t<sizeof(CharType) == 1 && !std::is_same_v<CharType, std::byte>, int> = 0>
+        template <oxenc::basic_char CharType>
+            requires(!std::same_as<CharType, std::byte>)
         void send_datagram(std::basic_string_view<CharType> data, std::shared_ptr<void> keep_alive = nullptr)
         {
             send_datagram(convert_sv<std::byte>(data), std::move(keep_alive));
         }
 
-        template <typename Char, std::enable_if_t<sizeof(Char) == 1, int> = 0>
+        template <oxenc::basic_char Char>
         void send_datagram(std::vector<Char>&& buf)
         {
             send_datagram(
@@ -138,7 +134,7 @@ namespace oxen::quic
                     std::make_shared<std::vector<Char>>(std::move(buf)));
         }
 
-        template <typename CharType>
+        template <oxenc::basic_char CharType>
         void send_datagram(std::basic_string<CharType>&& data)
         {
             auto keep_alive = std::make_shared<std::basic_string<CharType>>(std::move(data));
@@ -503,12 +499,14 @@ namespace oxen::quic
 
         // Implicit conversion of Connection to the underlying ngtcp2_conn* (so that you can pass a
         // Connection directly to ngtcp2 functions taking a ngtcp2_conn* argument).
-        template <typename T, std::enable_if_t<std::is_same_v<T, ngtcp2_conn>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, ngtcp2_conn>
         operator const T*() const
         {
             return conn.get();
         }
-        template <typename T, std::enable_if_t<std::is_same_v<T, ngtcp2_conn>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, ngtcp2_conn>
         operator T*()
         {
             return conn.get();

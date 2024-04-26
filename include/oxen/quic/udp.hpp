@@ -37,7 +37,7 @@ namespace oxen::quic
         ngtcp2_pkt_info pkt_info{};
         std::variant<bstring_view, bstring> pkt_data;
 
-        template <typename Char = std::byte, typename = std::enable_if_t<sizeof(Char) == 1>>
+        template <oxenc::basic_char Char = std::byte>
         std::basic_string_view<Char> data() const
         {
             return std::visit(

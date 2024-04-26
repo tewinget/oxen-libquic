@@ -88,15 +88,17 @@ namespace oxen::quic
             log::warning(log_cat, "Privkey import failed!");
     }
 
-    GNUTLSCreds::GNUTLSCreds(std::string ed_seed, std::string ed_pubkey) : using_raw_pk{true}
+    GNUTLSCreds::GNUTLSCreds(std::string_view ed_seed, std::string_view ed_pubkey) : using_raw_pk{true}
     {
         log::trace(log_cat, "Initializing GNUTLSCreds from Ed25519 keypair");
 
         constexpr auto pem_fmt = "-----BEGIN {0} KEY-----\n{1}\n-----END {0} KEY-----\n"sv;
 
-        auto seed = x509_loader{fmt::format(pem_fmt, "PRIVATE", oxenc::to_base64(ASN_ED25519_SEED_PREFIX + ed_seed))};
+        auto seed = x509_loader{
+                fmt::format(pem_fmt, "PRIVATE", oxenc::to_base64("{}{}"_format(ASN_ED25519_SEED_PREFIX, ed_seed)))};
 
-        auto pubkey = x509_loader{fmt::format(pem_fmt, "PUBLIC", oxenc::to_base64(ASN_ED25519_PUBKEY_PREFIX + ed_pubkey))};
+        auto pubkey = x509_loader{
+                fmt::format(pem_fmt, "PUBLIC", oxenc::to_base64("{}{}"_format(ASN_ED25519_PUBKEY_PREFIX, ed_pubkey)))};
 
         assert(seed.from_mem() && pubkey.from_mem());
         assert(seed.format == pubkey.format);
@@ -147,14 +149,14 @@ namespace oxen::quic
         gnutls_certificate_free_credentials(cred);
     }
 
-    std::shared_ptr<GNUTLSCreds> GNUTLSCreds::make_from_ed_keys(std::string seed, std::string pubkey)
+    std::shared_ptr<GNUTLSCreds> GNUTLSCreds::make_from_ed_keys(std::string_view seed, std::string_view pubkey)
     {
         // would use make_shared, but I want GNUTLSCreds' constructor to be private
         std::shared_ptr<GNUTLSCreds> p{new GNUTLSCreds(seed, pubkey)};
         return p;
     }
 
-    std::shared_ptr<GNUTLSCreds> GNUTLSCreds::make_from_ed_seckey(std::string sk)
+    std::shared_ptr<GNUTLSCreds> GNUTLSCreds::make_from_ed_seckey(std::string_view sk)
     {
         if (sk.size() != GNUTLS_SECRET_KEY_SIZE)
             throw std::invalid_argument("Ed25519 secret key is invalid length!");
@@ -162,7 +164,7 @@ namespace oxen::quic
         auto pk = sk.substr(GNUTLS_KEY_SIZE);
         sk = sk.substr(0, GNUTLS_KEY_SIZE);
 
-        std::shared_ptr<GNUTLSCreds> p{new GNUTLSCreds(std::move(sk), std::move(pk))};
+        std::shared_ptr<GNUTLSCreds> p{new GNUTLSCreds(sk, pk)};
         return p;
     }
 

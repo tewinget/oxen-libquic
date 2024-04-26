@@ -14,7 +14,7 @@ namespace oxen::quic::test
     TEST_CASE("002 - Simple client to server transmission", "[002][simple][execute]")
     {
         Network test_net{};
-        auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::promise<bool> d_promise;
         std::future<bool> d_future = d_promise.get_future();
@@ -49,7 +49,7 @@ namespace oxen::quic::test
     TEST_CASE("002 - Simple client to server transmission", "[002][simple][bidirectional]")
     {
         Network test_net{};
-        auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::vector<std::promise<void>> d_promises{2};
         std::vector<std::future<void>> d_futures{2};
@@ -101,7 +101,7 @@ namespace oxen::quic::test
     TEST_CASE("002 - Simple client to server transmission", "[002][simple][2x2]")
     {
         Network test_net{};
-        auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto good_msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::vector<std::promise<void>> d_promises{2};
         std::vector<std::future<void>> d_futures{2};

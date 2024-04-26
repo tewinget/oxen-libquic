@@ -21,6 +21,9 @@ namespace oxen::quic
 {
     inline constexpr std::array<uint8_t, 16> _ipv6_any_addr = {0};
 
+    template <typename T>
+    concept RawSockAddr = std::same_as<T, sockaddr> || std::same_as<T, sockaddr_in> || std::same_as<T, sockaddr_in6>;
+
     // Holds an address, with a ngtcp2_addr held for easier passing into ngtcp2 functions
     struct Address
     {
@@ -64,11 +67,7 @@ namespace oxen::quic
         explicit Address(ipv6 v6, uint16_t port = 0);
 
         // Assignment from a sockaddr pointer; we copy the sockaddr's contents
-        template <
-                typename T,
-                std::enable_if_t<
-                        std::is_same_v<T, sockaddr> || std::is_same_v<T, sockaddr_in> || std::is_same_v<T, sockaddr_in6>,
-                        int> = 0>
+        template <RawSockAddr T>
         Address& operator=(const T* s)
         {
             _addr.addrlen = std::is_same_v<T, sockaddr>
@@ -212,20 +211,12 @@ namespace oxen::quic
         // pointer to other things (like bool) won't occur.
         //
         // If the given pointer is mutated you *must* call update_socklen() afterwards.
-        template <
-                typename T,
-                std::enable_if_t<
-                        std::is_same_v<T, sockaddr> || std::is_same_v<T, sockaddr_in> || std::is_same_v<T, sockaddr_in6>,
-                        int> = 0>
+        template <RawSockAddr T>
         operator T*()
         {
             return reinterpret_cast<T*>(&_sock_addr);
         }
-        template <
-                typename T,
-                std::enable_if_t<
-                        std::is_same_v<T, sockaddr> || std::is_same_v<T, sockaddr_in> || std::is_same_v<T, sockaddr_in6>,
-                        int> = 0>
+        template <RawSockAddr T>
         operator const T*() const
         {
             return reinterpret_cast<const T*>(&_sock_addr);
@@ -234,7 +225,8 @@ namespace oxen::quic
         // Conversion to a const ngtcp2_addr reference and pointer.  We don't provide non-const
         // access because this points at our internal data.
         operator const ngtcp2_addr&() const { return _addr; }
-        template <typename T, std::enable_if_t<std::is_same_v<T, ngtcp2_addr*>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, ngtcp2_addr>
         operator const T*() const
         {
             return &_addr;
@@ -369,12 +361,14 @@ namespace oxen::quic
         }
 
         // template code to pass Path as ngtcp2_path into ngtcp2 functions
-        template <typename T, std::enable_if_t<std::is_same_v<T, ngtcp2_path>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, ngtcp2_path>
         operator T*()
         {
             return &_path;
         }
-        template <typename T, std::enable_if_t<std::is_same_v<T, ngtcp2_path>, int> = 0>
+        template <typename T>
+            requires std::same_as<T, ngtcp2_path>
         operator const T*() const
         {
             return &_path;

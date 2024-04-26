@@ -1,4 +1,6 @@
 #pragma once
+#include <concepts>
+
 #include "connection_ids.hpp"
 #include "messages.hpp"
 #include "utils.hpp"
@@ -45,13 +47,13 @@ namespace oxen::quic
         Address local() const;
         Address remote() const;
 
-        template <typename CharType, std::enable_if_t<sizeof(CharType) == 1, int> = 0>
+        template <oxenc::basic_char CharType>
         void send(std::basic_string_view<CharType> data, std::shared_ptr<void> keep_alive = nullptr)
         {
             send_impl(convert_sv<std::byte>(data), std::move(keep_alive));
         }
 
-        template <typename CharType>
+        template <oxenc::basic_char CharType>
         void send(std::basic_string<CharType>&& data)
         {
             auto keep_alive = std::make_shared<std::basic_string<CharType>>(std::move(data));
@@ -59,7 +61,7 @@ namespace oxen::quic
             send(view, std::move(keep_alive));
         }
 
-        template <typename Char, std::enable_if_t<sizeof(Char) == 1, int> = 0>
+        template <oxenc::basic_char Char>
         void send(std::vector<Char>&& buf)
         {
             send(std::basic_string_view<Char>{buf.data(), buf.size()}, std::make_shared<std::vector<Char>>(std::move(buf)));
@@ -92,11 +94,8 @@ namespace oxen::quic
         // Wraps an IOChannel (or derived type) accessor member function pointer in a call_get for
         // synchronous access that always returns by value (even if the member function returns by
         // reference).
-        template <
-                typename Class,
-                typename T,
-                typename Ret = std::remove_cvref_t<T>,
-                typename EP = std::enable_if_t<std::is_base_of_v<IOChannel, Class>, Endpoint>>
+        template <typename Class, typename T, typename Ret = std::remove_cvref_t<T>, typename EP = Endpoint>
+            requires std::derived_from<Class, IOChannel>
         Ret call_get_accessor(T (Class::*getter)() const) const
         {
             return static_cast<EP&>(endpoint).call_get(

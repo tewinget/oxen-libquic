@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "address.hpp"
 #include "types.hpp"
 #include "utils.hpp"

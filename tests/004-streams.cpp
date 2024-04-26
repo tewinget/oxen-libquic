@@ -39,7 +39,7 @@ namespace oxen::quic::test
     TEST_CASE("004 - Multiple pending streams: streams available", "[004][streams][pending][config]")
     {
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::promise<void> data_promise;
         std::future<void> data_future = data_promise.get_future();
@@ -75,7 +75,7 @@ namespace oxen::quic::test
         auto client_established = callback_waiter{[](connection_interface&) {}};
 
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::promise<void> data_promise;
         std::future<void> data_future = data_promise.get_future();
@@ -129,7 +129,7 @@ namespace oxen::quic::test
         auto client_established = callback_waiter{[](connection_interface&) {}};
 
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::atomic<size_t> index{0};
         std::atomic<size_t> data_check{0};
@@ -258,7 +258,7 @@ namespace oxen::quic::test
     TEST_CASE("004 - Subclassing quic::stream, custom to standard", "[004][customstream][cross]")
     {
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::promise<void> ss_p, sc_p, cs_p, cc_p;
         std::future<void> ss_f = ss_p.get_future(), sc_f = sc_p.get_future(), cs_f = cs_p.get_future(),
@@ -310,7 +310,7 @@ namespace oxen::quic::test
     TEST_CASE("004 - Subclassing quic::stream, custom to custom", "[004][customstream][subclass]")
     {
         Network test_net{};
-        auto msg = "hello from the other siiiii-iiiiide"_bsv;
+        constexpr auto msg = "hello from the other siiiii-iiiiide"_bsv;
 
         std::promise<void> server_promise, client_promise;
         std::future<void> server_future = server_promise.get_future();
