@@ -80,7 +80,7 @@ namespace oxen::quic
         //  }
         explicit operator bool() const { return !timed_out && !is_error(); }
 
-        template <typename Char = char, typename = std::enable_if_t<sizeof(Char) == 1>>
+        template <oxenc::basic_char Char = char>
         std::basic_string_view<Char> view() const
         {
             return {reinterpret_cast<const Char*>(data.data()), data.size()};
@@ -94,13 +94,13 @@ namespace oxen::quic
         std::string_view endpoint() const { return {reinterpret_cast<const char*>(data.data()) + ep.first, ep.second}; }
         std::string endpoint_str() const { return std::string{endpoint()}; }
 
-        template <typename Char = char, typename = std::enable_if_t<sizeof(Char) == 1>>
+        template <oxenc::basic_char Char = char>
         std::basic_string_view<Char> body() const
         {
             return {reinterpret_cast<const Char*>(data.data()) + req_body.first, req_body.second};
         }
 
-        template <typename Char = char, typename = std::enable_if_t<sizeof(Char) == 1>>
+        template <oxenc::basic_char Char = char>
         std::basic_string<Char> body_str() const
         {
             return std::basic_string<Char>{body<Char>()};

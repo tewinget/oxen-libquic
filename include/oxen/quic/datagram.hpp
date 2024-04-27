@@ -26,21 +26,20 @@ namespace oxen::quic
 
         std::shared_ptr<connection_interface> get_conn_interface();
 
-        template <
-                typename CharType,
-                std::enable_if_t<sizeof(CharType) == 1 && !std::is_same_v<CharType, std::byte>, int> = 0>
+        template <oxenc::basic_char CharType>
+            requires(!std::same_as<CharType, std::byte>)
         void reply(std::basic_string_view<CharType> data, std::shared_ptr<void> keep_alive = nullptr)
         {
             reply(convert_sv<std::byte>(data), std::move(keep_alive));
         }
 
-        template <typename Char, std::enable_if_t<sizeof(Char) == 1, int> = 0>
+        template <oxenc::basic_char Char>
         void send_datagram(std::vector<Char>&& buf)
         {
             reply(std::basic_string_view<Char>{buf.data(), buf.size()}, std::make_shared<std::vector<Char>>(std::move(buf)));
         }
 
-        template <typename CharType>
+        template <oxenc::basic_char CharType>
         void reply(std::basic_string<CharType>&& data)
         {
             auto keep_alive = std::make_shared<std::basic_string<CharType>>(std::move(data));
