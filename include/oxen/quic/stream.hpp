@@ -13,6 +13,7 @@
 #include "connection_ids.hpp"
 #include "error.hpp"
 #include "iochannel.hpp"
+#include "opt.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 
@@ -55,6 +56,40 @@ namespace oxen::quic
         int64_t stream_id() const override { return _stream_id; }
 
         const ConnectionID reference_id;
+
+        /** Buffer Watermarking:
+            - Applications can call `::set_watermark(...)` to implement logic to be executed at states dictated by the number
+                of bytes currently unsent.
+            - Application must pass `low` and `high` watermark amounts; an execute-on-low callback can be passed with or
+                without an execute-on-high callback (and vice versa)
+                - The execute-on-low callback will not be executed until the buffer state rises above the `high` value; it
+                    will not be executed again until the buffer state rises once more above the `high` value
+                - The execute-on-high callback will not be executed until the buffer state drops below the `low` value; it
+                    will not be executed again until the buffer state drops once more below the `low` value
+            - Callbacks can be passed with an optional boolean in their opt:: wrapper, indicating "clear after execution";
+                this will ensure the callback is only executed ONCE before being cleared. The default behavior is repeated
+                callback execution
+            - Invoking this function repeatedly will overwrite any currently set thresholds and callbacks
+        */
+        void set_watermark(
+                size_t low, size_t high, std::optional<opt::watermark> low_hook, std::optional<opt::watermark> high_hook);
+
+        // Clears any currently set watermarks on this stream object
+        void clear_watermarks();
+
+        // Do not call this function from within a watermark callback!
+        bool has_watermarks() const;
+
+        /** Stream Pause:
+            - Applications can call `::pause()` to stop extending the max stream data offset. This has the effect of limiting
+                the inflow by signalling to the sender that they should pause
+            - This is reverted by invoking `::resume()`
+        */
+        void pause();
+
+        void resume();
+
+        bool is_paused() const;
 
         // These public methods are synchronized so that they can be safely called from outside the
         // libquic main loop thread.
@@ -109,7 +144,21 @@ namespace oxen::quic
         bool _is_shutdown{false};
         bool _sent_fin{false};
         bool _ready{false};
+        bool _paused{false};
         int64_t _stream_id;
+
+        size_t _paused_offset{0};
+
+        bool _is_watermarked{false};
+
+        size_t _high_mark{0};
+        size_t _low_mark{0};
+
+        bool _high_primed{false};
+        bool _low_primed{true};
+
+        opt::watermark _high_water;
+        opt::watermark _low_water;
 
         void wrote(size_t bytes) override;
 
