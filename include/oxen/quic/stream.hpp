@@ -80,6 +80,17 @@ namespace oxen::quic
         // Do not call this function from within a watermark callback!
         bool has_watermarks() const;
 
+        /** Stream Pause:
+            - Applications can call `::pause()` to stop extending the max stream data offset. This has the effect of limiting
+                the inflow by signalling to the sender that they should pause
+            - This is reverted by invoking `::resume()`
+        */
+        void pause();
+
+        void resume();
+
+        bool is_paused() const;
+
         // These public methods are synchronized so that they can be safely called from outside the
         // libquic main loop thread.
         bool available() const;
@@ -133,9 +144,12 @@ namespace oxen::quic
         bool _is_shutdown{false};
         bool _sent_fin{false};
         bool _ready{false};
+        bool _paused{false};
         int64_t _stream_id;
 
-        bool _be_water{false};
+        size_t _paused_offset{0};
+
+        bool _is_watermarked{false};
 
         size_t _high_mark{0};
         size_t _low_mark{0};

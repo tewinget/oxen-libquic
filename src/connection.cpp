@@ -1161,7 +1161,7 @@ namespace oxen::quic
         const bool was_closing = stream._is_closing;
         stream._is_closing = stream._is_shutdown = true;
 
-        if (stream._be_water)
+        if (stream._is_watermarked)
             stream.clear_watermarks();
 
         if (!was_closing)
@@ -1305,7 +1305,10 @@ namespace oxen::quic
         }
         else
         {
-            ngtcp2_conn_extend_max_stream_offset(conn.get(), id, data.size());
+            if (str->_paused)
+                str->_paused_offset += data.size();
+            else
+                ngtcp2_conn_extend_max_stream_offset(conn.get(), id, data.size());
             ngtcp2_conn_extend_max_offset(conn.get(), data.size());
         }
 

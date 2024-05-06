@@ -68,7 +68,7 @@ namespace oxen::quic
             else
                 _high_water.clear();
 
-            _be_water = true;
+            _is_watermarked = true;
 
             log::info(log_cat, "Stream set watermarks!");
         });
@@ -77,7 +77,7 @@ namespace oxen::quic
     void Stream::clear_watermarks()
     {
         endpoint.call_soon([this]() {
-            if (not _be_water and not _low_water and not _high_water)
+            if (not _is_watermarked and not _low_water and not _high_water)
             {
                 log::warning(log_cat, "Failed to clear watermarks; stream has none set!");
                 return;
@@ -89,9 +89,47 @@ namespace oxen::quic
                 _low_water.clear();
             if (_high_water)
                 _high_water.clear();
-            _be_water = false;
+            _is_watermarked = false;
             log::info(log_cat, "Stream cleared currently set watermarks!");
         });
+    }
+
+    void Stream::pause()
+    {
+        endpoint.call([this]() {
+            if (not _paused)
+            {
+                log::debug(log_cat, "Pausing stream ID:{}", _stream_id);
+                assert(_paused_offset == 0);
+                _paused = true;
+            }
+            else
+                log::debug(log_cat, "Stream ID:{} already paused!", _stream_id);
+        });
+    }
+
+    void Stream::resume()
+    {
+        endpoint.call([this]() {
+            if (_paused)
+            {
+                log::debug(log_cat, "Resuming stream ID:{}", _stream_id);
+                if (_paused_offset)
+                {
+                    ngtcp2_conn_extend_max_stream_offset(*_conn, _stream_id, _paused_offset);
+                    _paused_offset = 0;
+                }
+
+                _paused = false;
+            }
+            else
+                log::debug(log_cat, "Stream ID:{} is not paused!", _stream_id);
+        });
+    }
+
+    bool Stream::is_paused() const
+    {
+        return endpoint.call_get([this]() { return _paused; });
     }
 
     bool Stream::available() const
@@ -106,7 +144,7 @@ namespace oxen::quic
 
     bool Stream::has_watermarks() const
     {
-        return endpoint.call_get([this]() { return _be_water and _low_water and _high_water; });
+        return endpoint.call_get([this]() { return _is_watermarked and _low_water and _high_water; });
     }
 
     std::shared_ptr<Stream> Stream::get_stream()
@@ -203,7 +241,7 @@ namespace oxen::quic
         auto sz = size();
 
         // Do not bother with this block of logic if no watermarks are set
-        if (_be_water)
+        if (_is_watermarked)
         {
             auto unsent = sz - _unacked_size;
 

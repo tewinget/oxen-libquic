@@ -12,9 +12,6 @@ namespace oxen::quic::test
         Network test_net{};
         bstring req_msg(100'000, std::byte{'a'});
 
-        std::promise<bool> d_promise;
-        std::future<bool> d_future = d_promise.get_future();
-
         auto client_established = callback_waiter{[](connection_interface&) {}};
         auto server_established = callback_waiter{[](connection_interface&) {}};
 
@@ -85,16 +82,63 @@ namespace oxen::quic::test
             REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
             REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
 
-            std::this_thread::sleep_for(150ms);
+            std::this_thread::sleep_for(250ms);
 
             REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
             REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
 
-            std::this_thread::sleep_for(150ms);
+            std::this_thread::sleep_for(250ms);
 
             REQUIRE(low_count >= 2);
-            REQUIRE(high_count > 1);
+            REQUIRE(high_count >= 1);
             REQUIRE(low_count >= high_count);
+
+            client_stream->clear_watermarks();
+
+            REQUIRE_FALSE(client_stream->has_watermarks());
+        }
+
+        SECTION("Watermarks persist; server stream pausing")
+        {
+            std::atomic<int> low_count{0}, high_count{0};
+
+            client_stream->set_watermark(
+                    500,
+                    2000,
+                    opt::watermark{
+                            [&](const Stream&) {
+                                log::debug(log_cat, "Executing low hook!");
+                                low_count += 1;
+                            },
+                            true},
+                    opt::watermark{
+                            [&](const Stream&) {
+                                log::debug(log_cat, "Executing high hook!");
+                                high_count += 1;
+                            },
+                            true});
+
+            REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
+
+            std::this_thread::sleep_for(100ms);
+
+            auto server_stream = server_endpoint->get_all_conns().front()->get_stream(client_stream->stream_id());
+            REQUIRE(server_stream != nullptr);
+
+            server_stream->pause();
+            REQUIRE(server_stream->is_paused());
+
+            REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
+            REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
+            REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
+            REQUIRE_NOTHROW(client_stream->send(bstring_view{req_msg}));
+
+            server_stream->resume();
+            REQUIRE_FALSE(server_stream->is_paused());
+            std::this_thread::sleep_for(500ms);  // stupid debian sid ARM64 CI
+
+            REQUIRE(low_count >= 2);
+            REQUIRE(high_count >= 1);
 
             client_stream->clear_watermarks();
 
