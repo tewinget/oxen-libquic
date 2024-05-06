@@ -1161,6 +1161,9 @@ namespace oxen::quic
         const bool was_closing = stream._is_closing;
         stream._is_closing = stream._is_shutdown = true;
 
+        if (stream._be_water)
+            stream.clear_watermarks();
+
         if (!was_closing)
         {
             log::trace(log_cat, "Invoking stream close callback");

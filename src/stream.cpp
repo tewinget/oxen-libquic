@@ -42,6 +42,58 @@ namespace oxen::quic
         log::trace(log_cat, "Destroying stream {}", _stream_id);
     }
 
+    void Stream::set_watermark(
+            size_t low, size_t high, std::optional<opt::watermark> low_cb, std::optional<opt::watermark> high_cb)
+    {
+        if (not low_cb and not high_cb)
+            throw std::invalid_argument{"Must pass at least one callback in call to ::set_watermark()!"};
+
+        endpoint.call_soon([this, low, high, low_hook = std::move(low_cb), high_hook = std::move(high_cb)]() {
+            if (_is_closing || _is_shutdown || _sent_fin)
+            {
+                log::warning(log_cat, "Failed to set watermarks; stream is not active!");
+                return;
+            }
+
+            _low_mark = low;
+            _high_mark = high;
+
+            if (low_hook.has_value())
+                _low_water = std::move(*low_hook);
+            else
+                _low_water.clear();
+
+            if (high_hook.has_value())
+                _high_water = std::move(*high_hook);
+            else
+                _high_water.clear();
+
+            _be_water = true;
+
+            log::info(log_cat, "Stream set watermarks!");
+        });
+    }
+
+    void Stream::clear_watermarks()
+    {
+        endpoint.call_soon([this]() {
+            if (not _be_water and not _low_water and not _high_water)
+            {
+                log::warning(log_cat, "Failed to clear watermarks; stream has none set!");
+                return;
+            }
+
+            _low_mark = 0;
+            _high_mark = 0;
+            if (_low_water)
+                _low_water.clear();
+            if (_high_water)
+                _high_water.clear();
+            _be_water = false;
+            log::info(log_cat, "Stream cleared currently set watermarks!");
+        });
+    }
+
     bool Stream::available() const
     {
         return endpoint.call_get([this] { return !(_is_closing || _is_shutdown || _sent_fin); });
@@ -50,6 +102,11 @@ namespace oxen::quic
     bool Stream::is_ready() const
     {
         return endpoint.call_get([this] { return _ready; });
+    }
+
+    bool Stream::has_watermarks() const
+    {
+        return endpoint.call_get([this]() { return _be_water and _low_water and _high_water; });
     }
 
     std::shared_ptr<Stream> Stream::get_stream()
@@ -143,7 +200,48 @@ namespace oxen::quic
         if (bytes)
             user_buffers.front().first.remove_prefix(bytes);
 
-        log::trace(log_cat, "{} bytes acked, {} unacked remaining", bytes, size());
+        auto sz = size();
+
+        // Do not bother with this block of logic if no watermarks are set
+        if (_be_water)
+        {
+            auto unsent = sz - _unacked_size;
+
+            // We are above the high watermark. We prime the low water hook to be fired the next time we drop below the low
+            // watermark. If the high water hook exists and is primed, execute it
+            if (unsent >= _high_mark)
+            {
+                _low_primed = true;
+                log::info(log_cat, "Low water hook primed!");
+
+                if (_high_water and _high_primed)
+                {
+                    log::info(log_cat, "Executing high watermark hook!");
+                    _high_primed = false;
+                    return _high_water(*this);
+                }
+            }
+            // We are below the low watermark. We prime the high water hook to be fired the next time we rise above the high
+            // watermark. If the low water hook exists and is primed, execute it
+            else if (unsent <= _low_mark)
+            {
+                _high_primed = true;
+                log::info(log_cat, "High water hook primed!");
+
+                if (_low_water and _low_primed)
+                {
+                    log::info(log_cat, "Executing low watermark hook!");
+                    _low_primed = false;
+                    return _low_water(*this);
+                }
+            }
+
+            // Low/high watermarks were executed and self-cleared, so clean up
+            if (not _high_water and not _low_water)
+                return clear_watermarks();
+        }
+
+        log::trace(log_cat, "{} bytes acked, {} unacked remaining", bytes, sz);
     }
 
     void Stream::wrote(size_t bytes)
