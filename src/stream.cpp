@@ -127,9 +127,48 @@ namespace oxen::quic
         });
     }
 
+    void Stream::stop_reading()
+    {
+        endpoint.call([this]() {
+            if (not _is_reading)
+            {
+                log::warning(log_cat, "Stream has already halted read operations!");
+                return;
+            }
+
+            _is_reading = false;
+
+            log::warning(log_cat, "Halting all read operations on stream ID:{}!", _stream_id);
+            ngtcp2_conn_shutdown_stream_read(*_conn, 0, _stream_id, 0);
+        });
+    }
+
+    void Stream::stop_writing()
+    {
+        endpoint.call([this]() {
+            if (not _is_writing)
+            {
+                log::warning(log_cat, "Stream has already halted write operations!");
+                return;
+            }
+
+            _is_writing = false;
+        });
+    }
+
     bool Stream::is_paused() const
     {
         return endpoint.call_get([this]() { return _paused; });
+    }
+
+    bool Stream::is_reading() const
+    {
+        return endpoint.call_get([this]() { return _is_reading; });
+    }
+
+    bool Stream::is_writing() const
+    {
+        return endpoint.call_get([this]() { return _is_writing; });
     }
 
     bool Stream::available() const
@@ -216,6 +255,28 @@ namespace oxen::quic
             _conn->packet_io_ready();
         else
             log::info(log_cat, "Stream not ready for broadcast yet, data appended to buffer and on deck");
+
+        if (_is_watermarked)
+        {
+            // We are above the high watermark. We prime the low water hook to be fired the next time we drop below the low
+            // watermark. If the high water hook exists and is primed, execute it
+            if (auto unsent = size() - _unacked_size; unsent >= _high_mark)
+            {
+                _low_primed = true;
+                log::info(log_cat, "Low water hook primed!");
+
+                if (_high_water and _high_primed)
+                {
+                    log::info(log_cat, "Executing high watermark hook!");
+                    _high_primed = false;
+                    _high_water(*this);
+                }
+            }
+
+            // Low/high watermarks were executed and self-cleared, so clean up
+            if (not _high_water and not _low_water)
+                return clear_watermarks();
+        }
     }
 
     void Stream::acknowledge(size_t bytes)
@@ -240,28 +301,19 @@ namespace oxen::quic
 
         auto sz = size();
 
+        if (not _is_writing and _unacked_size == 0)
+        {
+            log::warning(log_cat, "All transmitted data acked; halting all write operations on stream ID:{}", _stream_id);
+            ngtcp2_conn_shutdown_stream_write(*_conn, 0, _stream_id, 0);
+            return clear_watermarks();
+        }
+
         // Do not bother with this block of logic if no watermarks are set
         if (_is_watermarked)
         {
-            auto unsent = sz - _unacked_size;
-
-            // We are above the high watermark. We prime the low water hook to be fired the next time we drop below the low
-            // watermark. If the high water hook exists and is primed, execute it
-            if (unsent >= _high_mark)
-            {
-                _low_primed = true;
-                log::info(log_cat, "Low water hook primed!");
-
-                if (_high_water and _high_primed)
-                {
-                    log::info(log_cat, "Executing high watermark hook!");
-                    _high_primed = false;
-                    return _high_water(*this);
-                }
-            }
             // We are below the low watermark. We prime the high water hook to be fired the next time we rise above the high
             // watermark. If the low water hook exists and is primed, execute it
-            else if (unsent <= _low_mark)
+            if (auto unsent = sz - _unacked_size; unsent <= _low_mark)
             {
                 _high_primed = true;
                 log::info(log_cat, "High water hook primed!");
@@ -270,7 +322,7 @@ namespace oxen::quic
                 {
                     log::info(log_cat, "Executing low watermark hook!");
                     _low_primed = false;
-                    return _low_water(*this);
+                    _low_water(*this);
                 }
             }
 

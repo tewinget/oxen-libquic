@@ -91,6 +91,14 @@ namespace oxen::quic
 
         bool is_paused() const;
 
+        bool is_reading() const;
+
+        bool is_writing() const;
+
+        void stop_reading();
+
+        void stop_writing();
+
         // These public methods are synchronized so that they can be safely called from outside the
         // libquic main loop thread.
         bool available() const;
@@ -159,6 +167,9 @@ namespace oxen::quic
 
         opt::watermark _high_water;
         opt::watermark _low_water;
+
+        bool _is_reading{true};
+        bool _is_writing{true};
 
         void wrote(size_t bytes) override;
 
