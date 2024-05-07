@@ -11,7 +11,7 @@ LOCALHOST = "127.0.0.1"
 parser = argparse.ArgumentParser("Simple TCP Cannon")
 parser.add_argument(
     "--size",
-    default=400,
+    default=40000,
     help="The number of bytes to send",
     type=int,
 )
@@ -100,11 +100,12 @@ if __name__ == "__main__":
                     connected = True
 
                     while not message_sent:
-                        print("Constructing msg of size {}B".format(SENDSIZE))
                         msg = b""
 
                         for i in range(SENDSIZE):
                             msg += random.randint(0, 9).to_bytes()
+
+                        print("Constructing msg of size {}B".format(SENDSIZE))
 
                         if len(msg) > 0:
                             print("\nSending message...")
@@ -121,7 +122,9 @@ if __name__ == "__main__":
                                 print("EOF reached!")
 
                             if len(buf) > 0:
-                                print("\nReceived {}B in response!".format(len(buf)))
+                                # print("\nReceived {}B in response!".format(len(buf)))
+                                print("Response received:\n")
+                                print(buf.decode())
                                 buf = b""
 
                             received = True

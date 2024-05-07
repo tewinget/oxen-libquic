@@ -129,9 +129,9 @@ namespace oxen::quic
         template <oxenc::basic_char Char>
         void send_datagram(std::vector<Char>&& buf)
         {
-            send_datagram(
-                    std::basic_string_view<Char>{buf.data(), buf.size()},
-                    std::make_shared<std::vector<Char>>(std::move(buf)));
+            auto keep_alive = std::make_shared<std::vector<Char>>(std::move(buf));
+            std::basic_string_view<Char> view{keep_alive->data(), keep_alive->size()};
+            send_datagram(view, std::move(keep_alive));
         }
 
         template <oxenc::basic_char CharType>

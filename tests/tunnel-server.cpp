@@ -30,16 +30,12 @@ int main(int argc, char* argv[])
     Address localhost_blank{LOCALHOST, 0}, manual_server_local1{LOCALHOST, 4444}, manual_server_local2{LOCALHOST, 4455},
             manual_server_local3{LOCALHOST, 4466};
 
-    std::unordered_map<uint16_t, Address> localport_to_backendtcp{
-            {manual_server_local1.port(), backend_tcp1},
-            {manual_server_local2.port(), backend_tcp2},
-            {manual_server_local3.port(), backend_tcp3}};
+    std::unordered_map<uint16_t, std::tuple<Address, Address>> localport_to_backendpair{
+            {manual_server_local1.port(), {manual_server_local1, backend_tcp1}},
+            {manual_server_local2.port(), {manual_server_local2, backend_tcp2}},
+            {manual_server_local3.port(), {manual_server_local3, backend_tcp3}}};
 
-    std::unordered_map<uint16_t, Address> backendport_to_localaddr{
-            //
-    };
-
-    // std::atomic<bool> initial_tunnel{false};
+    std::unordered_map<uint16_t, Path> localport_to_route{};
 
     auto server_tls = GNUTLSCreds::make_from_ed_keys(TUNNEL_SEED, TUNNEL_PUBKEY);
 
@@ -55,14 +51,15 @@ int main(int argc, char* argv[])
         auto path = s.path().invert();
         auto& remote = path.remote;
         auto& local = path.local;
+        auto localport = local.port();
         Address backend_addr;
 
-        if (auto it = localport_to_backendtcp.find(local.port()); it != localport_to_backendtcp.end())
-            backend_addr = it->second;
+        if (auto it = localport_to_backendpair.find(local.port()); it != localport_to_backendpair.end())
+            backend_addr = std::get<1>(it->second);
         else
             throw std::runtime_error{"You fucked your mapping up dan (local:{}, remote:{})"_format(local, remote)};
 
-        log::info(test_cat, "Inbound new stream to local port {} routing to backend at: {}", local.port(), backend_addr);
+        log::info(test_cat, "Inbound new stream to local port {} routing to backend at: {}", localport, backend_addr);
 
         if (auto it_a = _tunnels.find(local); it_a != _tunnels.end())
         {
@@ -73,12 +70,13 @@ int main(int argc, char* argv[])
             auto tcp_conn = _handle->connect_to_backend(s.shared_from_this(), backend_addr);
 
             // search for local manual_server port extracted from the path
-            if (auto it_b = conns.find(local.port()); it_b != conns.end())
+            if (auto it_b = conns.find(localport); it_b != conns.end())
             {
-                it_b->second._tcp_conns.insert_or_assign(backend_addr, std::move(tcp_conn));
+                it_b->second._tcp_conns2[backend_addr].insert(std::move(tcp_conn));
+                // it_b->second._tcp_conns.insert_or_assign(backend_addr, std::move(tcp_conn));
             }
             else
-                throw std::runtime_error{"Could not find paired TCP-QUIC for local port:{}"_format(local.port())};
+                throw std::runtime_error{"Could not find paired TCP-QUIC for local port:{}"_format(localport)};
         }
         else
             throw std::runtime_error{"Could not find tunnel to local:{}!"_format(local)};
@@ -87,20 +85,18 @@ int main(int argc, char* argv[])
     };
 
     auto manual_server_established = [&](connection_interface& ci) {
+        // set up the routing lookup; this expects the inverted path as set by the client
+        auto route_path = ci.path();
+
         // Path needs inversion because it is set by the client in manual routing
-        auto path = ci.path().invert();
-        auto& remote = path.remote;
-        auto& local = path.local;
+        auto& remote = route_path.local;
+        auto& local = route_path.remote;
+        auto localport = local.port();
 
-        // if (not initial_tunnel)
-        // {
-        //     log::info(test_cat, "Server established initial connection with remote endpoint!");
-        //     initial_tunnel = true;
-        //     return;
-        // }
+        // store in lookup
+        localport_to_route.emplace(localport, route_path);
 
-        log::debug(test_cat, "Server: (local:{}, remote:{})", local, remote);
-        log::critical(test_cat, "Manual server established connection (path: {})...", path);
+        log::critical(test_cat, "Manual server established connection (local:{} -> remote:{})...", local, remote);
 
         auto _handle = TCPHandle::make_client(server_net.loop());
 
@@ -114,8 +110,7 @@ int main(int argc, char* argv[])
         tcp_quic._ci = ci.shared_from_this();
 
         // map against local manual server port
-        // tunneled_conn.conns[local.port()] = std::move(tcp_quic);
-        if (auto [_, b] = tunneled_conn.conns.emplace(local.port(), std::move(tcp_quic)); not b)
+        if (auto [_, b] = tunneled_conn.conns.emplace(localport, std::move(tcp_quic)); not b)
             throw std::runtime_error{"Failed to emplace tunneled_connection!"};
 
         _tunnels.emplace(local, std::move(tunneled_conn));
@@ -129,11 +124,29 @@ int main(int argc, char* argv[])
         std::shared_ptr<connection_interface> tunnel_ci;
 
         auto manual_server = server_net.endpoint(localhost_blank, opt::manual_routing{[&](const Path& p, bstring_view data) {
-                                                     tunnel_ci->send_datagram(Packet(p, bstring{data}).bt_encode());
+                                                     log::debug(log_cat, "server manual send path: {}", p);
+                                                     tunnel_ci->send_datagram(serialize_payload(data, p.remote.port()));
                                                  }});
 
-        dgram_data_callback recv_dgram_cb = [&](dgram_interface&, bstring data) {
-            manual_server->manually_receive_packet(*Packet::bt_decode(std::move(data)));
+        dgram_data_callback recv_dgram_cb = [&](dgram_interface&, bstring buf) {
+            auto [p, data] = deserialize_payload(buf);
+            Path path;
+
+            if (auto it = localport_to_route.find(p); it != localport_to_route.end())
+                path = it->second;
+            else
+            {
+                if (auto it = localport_to_backendpair.find(p); it != localport_to_backendpair.end())
+                {
+                    path = Path{localhost_blank, std::get<0>(it->second)};
+                    auto [itr, _] = localport_to_route.emplace(p, path);
+                    log::info(log_cat, "server manual mapping port:{} to route:{}", p, itr->second);
+                }
+                else
+                    throw std::runtime_error{"Could not find backend pair for port:{}"_format(p)};
+            }
+
+            manual_server->manually_receive_packet(Packet{path, std::move(data)});
         };
 
         std::promise<void> tunnel_prom;

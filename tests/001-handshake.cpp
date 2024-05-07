@@ -3,6 +3,7 @@
 #include <oxen/quic/gnutls_crypto.hpp>
 #include <thread>
 
+#include "tcp.hpp"
 #include "utils.hpp"
 
 namespace oxen::quic::test

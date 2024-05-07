@@ -113,7 +113,7 @@ if __name__ == "__main__":
                         # explicitly conditional on this so connection failures will not enter this and loop around/restart
                         while not received:
                             print("Awaiting response...")
-                            buf = clientsocket.recv(2048).strip()
+                            buf = clientsocket.recv(4096).strip()
 
                             if len(buf) == 0:
                                 print("EOF reached!")
@@ -141,44 +141,6 @@ if __name__ == "__main__":
             connected = False
             message_sent = False
             received = False
-
-            # while received:
-            #     msg = input("Enter message to tunnel to remote...\n")
-
-            #     if msg.lower() == "q":
-            #         print("Closing client and exiting...")
-            #         if connected:
-            #             clientsocket.shutdown(socket.SHUT_RDWR)
-            #         clientsocket.close()
-            #         sys.exit()
-
-            #     if len(msg) > 0:
-            #         print("\nSending message...")
-            #         clientsocket.sendall(bytes(msg, encoding="utf8"))
-            #         msg = ""
-            #         received = False
-
-            # # explicitly conditional on this so connection failures will not enter this and loop around/restart
-            # while not received:
-            #     print("Awaiting response...")
-            #     buf = clientsocket.recv(2048).strip()
-
-            #     if len(buf) == 0:
-            #         print("EOF reached!")
-
-            #     if len(buf) > 0:
-            #         print("Response received:\n")
-            #         print(buf.decode())
-
-            #     break
-
-            # clientsocket.shutdown(socket.SHUT_RDWR)
-            # clientsocket.close()
-            # print("\nClient connection closed\n")
-
-            # awaiting_input = True
-            # connected = False
-            # received = True
 
     except KeyboardInterrupt or ConnectionError or ConnectionResetError:
         print("Shutting down TCP client...")

@@ -2,36 +2,9 @@
 
 import argparse
 import socket
-import socketserver
 import sys
 
-
-class MyTCPHandler(socketserver.BaseRequestHandler):
-    # def setup(self):
-    #     print("Configuring socket as non-blocking...")
-    #     self.request.setblocking(0)
-
-    def handle(self):
-        # buf = b""
-
-        # while True:
-        #     read = self.request.recv(4096)
-        #     if read == b"":
-        #         break
-        #     buf += read
-        #     read = b""
-
-        self.data = self.request.recv(4096).strip()
-
-        print(
-            "Received {}B received from {}:{}".format(
-                len(self.data), self.client_address[0], self.client_address[1]
-            )
-        )
-
-        self.request.sendall(self.data)
-        self.request.close()
-
+READSIZE = 4096
 
 parser = argparse.ArgumentParser("Simple TCP Server")
 parser.add_argument(
@@ -47,7 +20,6 @@ parser.add_argument(
     type=int,
 )
 
-
 if __name__ == "__main__":
     argvars = vars(parser.parse_args())
 
@@ -56,12 +28,41 @@ if __name__ == "__main__":
 
     print("Starting TCP server at {}:{}...".format(LOCALIP, LOCALPORT))
 
-    try:
-        with socketserver.TCPServer((LOCALIP, LOCALPORT), MyTCPHandler) as server:
-            server.serve_forever()
+    serversock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serversock.bind((LOCALIP, LOCALPORT))
+    serversock.listen(1)
 
-    except KeyboardInterrupt:
-        print("Shutting down TCP server...")
-        server.shutdown()
-        server.socket.close()
-        sys.exit()
+    while True:
+        try:
+            conn, addr = serversock.accept()
+            remote = "{}:{}".format(addr[0], addr[1])
+
+            print("Accepted connection from {}".format(remote))
+
+            buf = b""
+
+            while True:
+                b = conn.recv(READSIZE).strip()
+                buf += b
+                if not b:
+                    break
+
+            size = len(buf)
+            print("Received {}B from {}".format(size, remote))
+
+            conn.sendall(
+                bytes("{}B successfully received!".format(size), encoding="utf8")
+            )
+            conn.close()
+
+            print("Connection to {} closed!".format(remote))
+
+        except socket.error:
+            print("Remote {} disconnected! Continuing...".format(remote))
+            pass
+
+        except KeyboardInterrupt:
+            print("Shutting down TCP server...")
+            serversock.shutdown(socket.SHUT_RDWR)
+            serversock.close()
+            sys.exit()
