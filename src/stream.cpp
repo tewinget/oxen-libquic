@@ -127,6 +127,38 @@ namespace oxen::quic
         });
     }
 
+    void Stream::set_remote_reset_hooks(opt::remote_stream_reset sr)
+    {
+        // we can use ::call(...) instead of ::call_soon(...) because stream read/write shutdown only happens once per stream
+        // lifetime, and the application would be beyond incorrect to invoke this function in the callbacks themselves
+        endpoint.call([this, hooks = std::move(sr)]() {
+            if (_in_reset)
+                throw std::runtime_error{"Cannot set `remote_stream_reset` while executing currently set hooks!!"};
+
+            log::debug(log_cat, "Stream (ID:{}) provided `remote_stream_reset` hooks!", _stream_id);
+            _remote_reset = std::move(hooks);
+        });
+    }
+
+    void Stream::clear_remote_reset_hooks()
+    {
+        // we can use ::call(...) instead of ::call_soon(...) because stream read/write shutdown only happens once per stream
+        // lifetime, and the application would be beyond incorrect to invoke this function in the callbacks themselves
+        endpoint.call([this]() {
+            if (_in_reset)
+                throw std::runtime_error{"Cannot set `remote_stream_reset` while executing currently set hooks!!"};
+
+            log::debug(log_cat, "Stream (ID:{}) cleared `remote_stream_reset` hooks!", _stream_id);
+            _remote_reset.clear();
+            assert(not _remote_reset);
+        });
+    }
+
+    bool Stream::has_remote_reset_hooks() const
+    {
+        return endpoint.call_get([this]() { return _remote_reset.has_read_hook() and _remote_reset.has_write_hook(); });
+    }
+
     void Stream::stop_reading()
     {
         endpoint.call([this]() {
@@ -139,7 +171,7 @@ namespace oxen::quic
             _is_reading = false;
 
             log::warning(log_cat, "Halting all read operations on stream ID:{}!", _stream_id);
-            ngtcp2_conn_shutdown_stream_read(*_conn, 0, _stream_id, 0);
+            ngtcp2_conn_shutdown_stream_read(*_conn, 0, _stream_id, STREAM_REMOTE_READ_SHUTDOWN);
         });
     }
 
@@ -152,6 +184,18 @@ namespace oxen::quic
                 return;
             }
 
+            if (user_buffers.empty())
+            {
+                log::warning(
+                        log_cat,
+                        "All transmitted data dispatched and acked; halting all write operations on stream ID:{}",
+                        _stream_id);
+                ngtcp2_conn_shutdown_stream_write(*_conn, 0, _stream_id, STREAM_REMOTE_WRITE_SHUTDOWN);
+                return clear_watermarks();
+            }
+
+            // if buffers are empty and we call shutdown_stream_write now, we do not need to flip this boolean; it is used to
+            // signal for the same call in ::acknowledge()
             _is_writing = false;
         });
     }
@@ -248,6 +292,13 @@ namespace oxen::quic
     void Stream::append_buffer(bstring_view buffer, std::shared_ptr<void> keep_alive)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
+
+        if (not _is_writing)
+        {
+            log::warning(log_cat, "Stream (ID:{}) has halted writing; payload NOT appended to buffer!", _stream_id);
+            return;
+        }
+
         user_buffers.emplace_back(buffer, std::move(keep_alive));
         assert(endpoint.in_event_loop());
         assert(_conn);
@@ -299,14 +350,17 @@ namespace oxen::quic
         if (bytes)
             user_buffers.front().first.remove_prefix(bytes);
 
-        auto sz = size();
-
-        if (not _is_writing and _unacked_size == 0)
+        if (not _is_writing and user_buffers.empty())
         {
-            log::warning(log_cat, "All transmitted data acked; halting all write operations on stream ID:{}", _stream_id);
-            ngtcp2_conn_shutdown_stream_write(*_conn, 0, _stream_id, 0);
+            log::warning(
+                    log_cat,
+                    "All transmitted data dispatched and acked; halting all write operations on stream ID:{}",
+                    _stream_id);
+            ngtcp2_conn_shutdown_stream_write(*_conn, 0, _stream_id, STREAM_REMOTE_WRITE_SHUTDOWN);
             return clear_watermarks();
         }
+
+        auto sz = size();
 
         // Do not bother with this block of logic if no watermarks are set
         if (_is_watermarked)
