@@ -82,7 +82,7 @@ if (NOT TARGET oxen::logging)
 else()
     message(STATUS "Target oxen::logging already found!")
 endif()
-set(OXEN_LOGGING_SOURCE_ROOT "${OXEN_LOGGING_SOURCE_ROOT};${PROJECT_SOURCE_DIR}" CACHE INTERNAL "")
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
 
 # oxenc
 if (NOT TARGET oxenc)
