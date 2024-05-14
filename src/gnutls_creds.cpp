@@ -92,6 +92,8 @@ namespace oxen::quic
     {
         log::trace(log_cat, "Initializing GNUTLSCreds from Ed25519 keypair");
 
+        gnutls_anon_allocate_server_credentials(&server_anon);
+        gnutls_anon_allocate_client_credentials(&client_anon);
         constexpr auto pem_fmt = "-----BEGIN {0} KEY-----\n{1}\n-----END {0} KEY-----\n"sv;
 
         auto seed = x509_loader{
@@ -126,7 +128,8 @@ namespace oxen::quic
 
         // clang format keeps changing this arbitrarily, so disable for this line
         // clang-format off
-        constexpr auto* priority = "NORMAL:+ECDHE-PSK:+PSK:+ECDHE-ECDSA:+AES-128-CCM-8:+CTYPE-CLI-ALL:+CTYPE-SRV-ALL:+SHA256";
+        //constexpr auto* priority = "NORMAL:+ECDHE-PSK:+PSK:+ECDHE-ECDSA:+AES-128-CCM-8:+CTYPE-CLI-ALL:+CTYPE-SRV-ALL:+SHA256";
+        constexpr auto* priority = "NORMAL:-CIPHER-ALL:+NULL";
         // clang-format on
 
         const char* err{nullptr};
@@ -140,7 +143,7 @@ namespace oxen::quic
             throw std::runtime_error("gnutls key exchange algorithm priority setup failed");
         }
 
-        gnutls_certificate_set_verify_function(cred, cert_verify_callback_gnutls);
+        //gnutls_certificate_set_verify_function(cred, cert_verify_callback_gnutls);
     }
 
     GNUTLSCreds::~GNUTLSCreds()

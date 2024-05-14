@@ -105,6 +105,7 @@ namespace oxen::quic
 
         init_flags |= GNUTLS_ENABLE_EARLY_DATA | GNUTLS_NO_END_OF_EARLY_DATA;
 
+        /*
         // DISCUSS: we actually don't want to do this if the requested certificate is expecting
         // x509 (see gnutls_creds.cpp::cert_retrieve_callback_gnutls function body)
         if (creds.using_raw_pk)
@@ -112,6 +113,7 @@ namespace oxen::quic
             log::debug(log_cat, "Setting GNUTLS_ENABLE_RAWPK flag on gnutls_init");
             init_flags |= GNUTLS_ENABLE_RAWPK;
         }
+        */
 
         if (auto rv = gnutls_init(&session, init_flags); rv < 0)
         {
@@ -175,10 +177,21 @@ namespace oxen::quic
 
         gnutls_session_set_ptr(session, &conn_ref);
 
-        if (auto rv = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, creds.cred); rv < 0)
+        if (is_client)
         {
-            log::warning(log_cat, "gnutls_credentials_set failed: {}", gnutls_strerror(rv));
-            throw std::runtime_error("gnutls_credentials_set failed");
+            if (auto rv = gnutls_credentials_set(session, GNUTLS_CRD_ANON, creds.client_anon); rv < 0)
+            {
+                log::warning(log_cat, "gnutls_credentials_set failed: {}", gnutls_strerror(rv));
+                throw std::runtime_error("gnutls_credentials_set failed");
+            }
+        }
+        else
+        {
+            if (auto rv = gnutls_credentials_set(session, GNUTLS_CRD_ANON, creds.server_anon); rv < 0)
+            {
+                log::warning(log_cat, "gnutls_credentials_set failed: {}", gnutls_strerror(rv));
+                throw std::runtime_error("gnutls_credentials_set failed");
+            }
         }
 
         // NOTE: IPv4 or IPv6 addresses not allowed (cannot be "127.0.0.1")

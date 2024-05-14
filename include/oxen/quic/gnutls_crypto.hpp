@@ -37,6 +37,8 @@ namespace oxen::quic
         };
     }
 
+    static gnutls_log_setter gnutls_logger{};
+
     namespace fs = std::filesystem;
 
     using gnutls_callback = std::function<int(
@@ -276,6 +278,8 @@ namespace oxen::quic
         const bool using_raw_pk{false};
 
         gnutls_certificate_credentials_t cred;
+        gnutls_anon_client_credentials_t client_anon;
+        gnutls_anon_server_credentials_t server_anon;
 
         key_verify_callback key_verify;
 
