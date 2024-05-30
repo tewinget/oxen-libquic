@@ -227,7 +227,7 @@ namespace oxen::quic
             if (req->cb)
                 endpoint.call([this, r = std::move(req)]() mutable {
                     if (auto* req = add_sent_request(std::move(r)))
-                        send(req->view());
+                        send(std::move(req->data));
                 });
             else
                 send(std::move(*req).payload());
