@@ -818,10 +818,8 @@ namespace oxen::quic
             if (pkt_updater)
                 pkt_updater->cancel();
 
-            _endpoint.call([this]() {
-                log::debug(log_cat, "Endpoint deleting {}", reference_id());
-                _endpoint.drop_connection(*this, io_error{CONN_SEND_FAIL});
-            });
+            log::debug(log_cat, "Endpoint deleting {}", reference_id());
+            _endpoint.drop_connection(*this, io_error{CONN_SEND_FAIL});
 
             return false;
         }
