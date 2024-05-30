@@ -1600,7 +1600,8 @@ namespace oxen::quic
             remote_pubkey = *remote_pk;
             tls_session->set_expected_remote_key(remote_pubkey);
 
-            if (auto maybe_token = _endpoint.get_path_validation_token(remote_pubkey))
+            auto maybe_token = _endpoint.get_path_validation_token(remote_pubkey);
+            if (maybe_token)
             {
                 settings.token = maybe_token->data();
                 settings.tokenlen = maybe_token->size();
