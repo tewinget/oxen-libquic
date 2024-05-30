@@ -802,7 +802,10 @@ namespace oxen::quic
             assert(n_packets > 0);  // n_packets, buf, bufsize now contain the unsent packets
             log::debug(log_cat, "Packet send blocked; queuing re-send");
 
-            _endpoint.get_socket()->when_writeable([this] {
+            _endpoint.get_socket()->when_writeable([&ep=_endpoint, connid=reference_id(), this] {
+                if (!ep.conns.count(connid))
+                    return; // Connection has gone away (and so `this` isn't valid!)
+
                 if (send(nullptr))
                 {  // Send finished so we can start our timers up again
                     packet_io_ready();
