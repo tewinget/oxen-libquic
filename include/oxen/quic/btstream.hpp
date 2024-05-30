@@ -154,9 +154,6 @@ namespace oxen::quic
 
         message to_timeout() && { return {return_sender, ""_bs, true}; }
 
-        std::string_view view() { return {data}; }
-        std::string payload() && { return std::move(data); }
-
       private:
         void handle_req_opts(std::function<void(message)> func) { cb = std::move(func); }
         void handle_req_opts(std::chrono::milliseconds exp) { timeout = exp; }
@@ -230,7 +227,7 @@ namespace oxen::quic
                         send(std::move(req->data));
                 });
             else
-                send(std::move(*req).payload());
+                send(std::move(*req).data);
         }
         // Same as above, but takes a regular string_view
         template <typename... Opt>
