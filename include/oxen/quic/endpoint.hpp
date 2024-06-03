@@ -182,6 +182,9 @@ namespace oxen::quic
             net.call_soon(std::forward<Args>(args)...);
         }
 
+        // Defers destruction of a shared_ptr to a future (but not current) event loop tick.
+        void reset_soon(std::shared_ptr<void> ptr) { net.reset_soon(std::move(ptr)); }
+
         // Shortcut for calling net.make_shared<T> to make a std::shared_ptr<T> that has destruction
         // synchronized to the network event loop.
         template <typename T, typename... Args>

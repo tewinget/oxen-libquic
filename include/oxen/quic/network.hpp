@@ -56,6 +56,11 @@ namespace oxen::quic
             return _loop->call_get(std::forward<Callable>(f));
         }
 
+        void reset_soon(std::shared_ptr<void> ptr)
+        {
+            call_soon([ptr = std::move(ptr)]() mutable { ptr.reset(); });
+        }
+
       private:
         std::shared_ptr<Loop> _loop;
         std::atomic<bool> shutdown_immediate{false};

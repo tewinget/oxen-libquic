@@ -392,8 +392,18 @@ namespace oxen::quic
 
         conn.drop_streams();
 
-        conns.erase(rid);
-        log::debug(log_cat, "Deleted connection ({})", rid);
+        if (auto it = conns.find(rid); it != conns.end())
+        {
+            // Defer destruction until the next event loop tick because there are code paths that
+            // can land here from within an ongoing connection method and so it isn't safe to allow
+            // the Connection to get destroyed right now.
+            reset_soon(std::move(it->second));
+            // We do want to remove it from `conns`, though, because some scheduled callbacks check
+            // for `rid` being still in the endpoint and so, in that respect, we want the connection
+            // to be considered gone even if its destructor doesn't fire yet.
+            conns.erase(it);
+            log::debug(log_cat, "Deleted connection ({})", rid);
+        }
     }
 
     int Endpoint::validate_anti_replay(ustring key, ustring data, time_t /* exp */)
