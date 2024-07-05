@@ -996,4 +996,94 @@ namespace oxen::quic::test
         REQUIRE("still alive"sv != "is success"sv);
     }
 
+    TEST_CASE("004 - BTRequestStream callback should be called on dead stream", "[004][streams][dead][btreq]")
+    {
+        // Reported issue: if there's a race between a connection close and a btreqstream command
+        // (with callback) then if the connection close happens (and fires all the stream callbacks)
+        // before the command is processed then the command's callback doesn't get fired with the
+        // error because, from the conn's point of view, it already fired all its stream callbacks.
+        //
+        // This test is meant to test that, even in such a case, a "late" command immediately fires
+        // the callback (since no one else is going to, and the connection is dead).
+        //
+        auto client_established = callback_waiter{[](connection_interface&) {}};
+        auto client_closed = callback_waiter{[](connection_interface&, uint64_t) {}};
+
+        Network test_net{};
+
+        Address server_local{};
+        Address client_local{};
+
+        auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
+
+        // The server is going to close the connection instance right away to cause the client's
+        // connection to close (almost) right away.
+        auto server_endpoint = test_net.endpoint(server_local, [](connection_interface& ci) { ci.close_connection(123); });
+        server_endpoint->listen(server_tls);
+
+        RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+        auto client_endpoint = test_net.endpoint(client_local, client_established);
+        auto conn = client_endpoint->connect(client_remote, client_tls, client_closed);
+        auto stream = conn->open_stream<BTRequestStream>();
+
+        // This is our simulated race: in the real world we don't know the close has happened yet
+        // (and a close callback like the one we're using here in the test suite won't work: the
+        // close could easily happen after we call `->command` below, but before the command
+        // actually hits the libquic event loop).
+        REQUIRE(client_closed.wait());
+
+        bool got_timeout = false;
+        auto cmd_cb = callback_waiter{[&](message msg) { got_timeout = msg.timed_out; }};
+        stream->command("asdf", "jkl;", cmd_cb);
+
+        REQUIRE(cmd_cb.wait());
+        CHECK(got_timeout);
+    }
+
+    TEST_CASE("004 - Exceptions when opening/queueing streams on a closed connection", "[004][streams][dead][exception]")
+    {
+        // Related to the above test case, if you opened or queued a stream in a race with the
+        // connection closing then whether or not the stream's close callback fires depended on
+        // whether or not the open/queue won the race to the event loop before the connection close
+        // gets processed.
+        //
+        // We avoid it now by immediately firing the stream's close callback in such a case and not
+        // queuing it or attempting to actually open it on the network layer.
+        //
+        auto client_established = callback_waiter{[](connection_interface&) {}};
+        auto client_closed = callback_waiter{[](connection_interface&, uint64_t) {}};
+
+        Network test_net{};
+
+        Address server_local{};
+        Address client_local{};
+
+        auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
+
+        // Close right away so that the client closes
+        auto server_endpoint = test_net.endpoint(server_local, [](connection_interface& ci) { ci.close_connection(123); });
+        server_endpoint->listen(server_tls);
+
+        RemoteAddress client_remote{defaults::SERVER_PUBKEY, "127.0.0.1"s, server_endpoint->local().port()};
+
+        auto client_endpoint = test_net.endpoint(client_local, client_established);
+        auto conn = client_endpoint->connect(client_remote, client_tls, client_closed);
+
+        // This is our simulated race: in the real world we don't know the close has happened yet
+        // (and a close callback like the one we're using here in the test suite won't work: the
+        // close could easily happen after we call `->command` below, but before the command
+        // actually hits the libquic event loop).
+        REQUIRE(client_closed.wait());
+
+        auto s1 = conn->open_stream();
+        CHECK(s1->is_closing());
+        CHECK_FALSE(s1->available());
+        auto s2 = conn->queue_incoming_stream();
+        CHECK(s2->is_closing());
+        CHECK_FALSE(s2->available());
+        CHECK(conn->num_streams_active() == 0);
+        CHECK(conn->num_streams_pending() == 0);
+    }
+
 }  // namespace oxen::quic::test

@@ -645,6 +645,22 @@ namespace oxen::quic
             next_incoming_stream_id += 4;
 
             log::trace(log_cat, "{} queuing new incoming stream for id {}", direction_str(), stream->_stream_id);
+
+            // If the connection is closing/draining then immediately close it (rather than adding
+            // it to the queue), so that what we give back is a closed stream but that has had its
+            // steam close callback fired to do any cleanup it needs.  Although this feels slightly
+            // weird, it's less clunky than forcing application code to try/catch or worry about a
+            // nullptr return from this function.
+            if (is_closing() || is_draining())
+            {
+                log::debug(
+                        log_cat,
+                        "closing newly queued stream {} immediately; this connection is closed",
+                        stream->_stream_id);
+                stream_execute_close(*stream, STREAM_ERROR_CONNECTION_CLOSED);
+                return stream;
+            }
+
             auto& str = _stream_queue[stream->_stream_id];
             str = std::move(stream);
             return str;
@@ -667,6 +683,16 @@ namespace oxen::quic
                 stream = construct_stream(make_stream);
 
             assert(!stream->_ready);
+
+            if (is_closing() || is_draining())
+            {
+                log::debug(
+                        log_cat,
+                        "closing newly opened stream {} immediately; this connection is closed",
+                        stream->_stream_id);
+                stream_execute_close(*stream, STREAM_ERROR_CONNECTION_CLOSED);
+                return stream;
+            }
 
             if (int rv = ngtcp2_conn_open_bidi_stream(conn.get(), &stream->_stream_id, stream.get()); rv != 0)
             {
@@ -776,7 +802,10 @@ namespace oxen::quic
             assert(n_packets > 0);  // n_packets, buf, bufsize now contain the unsent packets
             log::debug(log_cat, "Packet send blocked; queuing re-send");
 
-            _endpoint.get_socket()->when_writeable([this] {
+            _endpoint.get_socket()->when_writeable([&ep = _endpoint, connid = reference_id(), this] {
+                if (!ep.conns.count(connid))
+                    return;  // Connection has gone away (and so `this` isn't valid!)
+
                 if (send(nullptr))
                 {  // Send finished so we can start our timers up again
                     packet_io_ready();
@@ -792,10 +821,8 @@ namespace oxen::quic
             if (pkt_updater)
                 pkt_updater->cancel();
 
-            _endpoint.call([this]() {
-                log::debug(log_cat, "Endpoint deleting {}", reference_id());
-                _endpoint.drop_connection(*this, io_error{CONN_SEND_FAIL});
-            });
+            log::debug(log_cat, "Endpoint deleting {}", reference_id());
+            _endpoint.drop_connection(*this, io_error{CONN_SEND_FAIL});
 
             return false;
         }
@@ -1574,7 +1601,8 @@ namespace oxen::quic
             remote_pubkey = *remote_pk;
             tls_session->set_expected_remote_key(remote_pubkey);
 
-            if (auto maybe_token = _endpoint.get_path_validation_token(remote_pubkey))
+            auto maybe_token = _endpoint.get_path_validation_token(remote_pubkey);
+            if (maybe_token)
             {
                 settings.token = maybe_token->data();
                 settings.tokenlen = maybe_token->size();

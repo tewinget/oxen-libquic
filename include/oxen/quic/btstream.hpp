@@ -154,9 +154,6 @@ namespace oxen::quic
 
         message to_timeout() && { return {return_sender, ""_bs, true}; }
 
-        std::string_view view() { return {data}; }
-        std::string payload() && { return std::move(data); }
-
       private:
         void handle_req_opts(std::function<void(message)> func) { cb = std::move(func); }
         void handle_req_opts(std::chrono::milliseconds exp) { timeout = exp; }
@@ -225,9 +222,12 @@ namespace oxen::quic
             auto req = std::make_shared<sent_request>(*this, encode_command(ep, rid, body), rid, std::forward<Opt>(opts)...);
 
             if (req->cb)
-                endpoint.call([this, r = std::move(req)]() { send(sent_reqs.emplace_back(std::move(r))->view()); });
+                endpoint.call([this, r = std::move(req)]() mutable {
+                    if (auto* req = add_sent_request(std::move(r)))
+                        send(std::move(req->data));
+                });
             else
-                send(std::move(*req).payload());
+                send(std::move(*req).data);
         }
         // Same as above, but takes a regular string_view
         template <typename... Opt>
@@ -274,6 +274,8 @@ namespace oxen::quic
         std::string encode_command(std::string_view endpoint, int64_t rid, bstring_view body);
 
         std::string encode_response(int64_t rid, bstring_view body, bool error);
+
+        sent_request* add_sent_request(std::shared_ptr<sent_request> req);
 
         size_t parse_length(std::string_view req);
 
