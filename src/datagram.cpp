@@ -72,7 +72,11 @@ namespace oxen::quic
 
             if (unsent_impl() > dgram_queue_limit)
             {
-                log::info(log_cat, "Dropping datagram, queue over limit.");
+                auto n = ++dgram_drop_count;
+                if (n == 1 || n % 100 == 0)
+                    log::debug(log_cat, "Dropping datagram, queue over limit (drop #{})", n);
+                else
+                    log::trace(log_cat, "Dropping datagram, queue over limit (drop #{})", n);
                 return;
             }
 
