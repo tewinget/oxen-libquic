@@ -135,6 +135,8 @@ namespace oxen::quic
         /// send to block again, in which case the caller should rinse and repeat).
         void when_writeable(std::function<void()> cb);
 
+        void set_fwmark(uint32_t mark);
+
         /// Closed on destruction
         ~UDPSocket();
 

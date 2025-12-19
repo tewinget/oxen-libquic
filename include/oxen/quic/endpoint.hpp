@@ -37,6 +37,19 @@ struct event_base;
 
 namespace oxen::quic
 {
+    namespace opt
+    {
+
+        // The socket will mark packets with the given firewall mark.
+        //
+        // NOTE: This requires OS support and adequate user permissions or it will throw.
+        struct enable_fwmark
+        {
+            uint32_t _mark;
+            enable_fwmark(uint32_t mark) : _mark(mark) {}
+        };
+    }  // namespace opt
+
     class Endpoint : public std::enable_shared_from_this<Endpoint>
     {
       public:
@@ -186,6 +199,8 @@ namespace oxen::quic
         bool _disable_mtu_discovery{false};
         bool _allow_gso{false};
 
+        std::optional<opt::enable_fwmark> _fwmark;
+
         uint64_t _next_rid{0};
 
         std::vector<unsigned char> _static_secret;
@@ -217,6 +232,7 @@ namespace oxen::quic
         void handle_ep_opt(opt::manual_routing mrouting);
         void handle_ep_opt(opt::disable_mtu_discovery);
         void handle_ep_opt(opt::allow_gso);
+        void handle_ep_opt(opt::enable_fwmark);
 
         // Takes a std::optional-wrapped option that does nothing if the optional is empty,
         // otherwise passes it through to the above.  This is here to allow runtime-dependent

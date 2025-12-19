@@ -109,6 +109,11 @@ namespace oxen::quic
         _allow_gso = true;
     }
 
+    void Endpoint::handle_ep_opt(opt::enable_fwmark fwmark)
+    {
+        _fwmark = fwmark;
+    }
+
     ConnectionID Endpoint::next_reference_id()
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
@@ -141,6 +146,9 @@ namespace oxen::quic
             socket = std::make_unique<UDPSocket>(loop.get_event_base(), _local, _allow_gso, [this](Packet&& packet) {
                 handle_packet(std::move(packet));
             });
+
+            if (_fwmark)
+                socket->set_fwmark(_fwmark->_mark);
 
             _local = socket->address();
         }

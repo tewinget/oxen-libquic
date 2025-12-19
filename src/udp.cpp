@@ -820,6 +820,17 @@ namespace oxen::quic
         event_add(wev_.get(), nullptr);
     }
 
+    void UDPSocket::set_fwmark(uint32_t mark)
+    {
+        log::debug(log_cat, "Setting UDP socket fwmark to {:x}", mark);
+        if (setsockopt(sock_, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) == -1)
+        {
+            auto err = "Failed to set socket fwmark to {:x}!"_format(mark);
+            log::critical(log_cat, "{}", err);
+            throw std::runtime_error{err};
+        }
+    }
+
     Packet::Packet(const Address& local, std::span<const std::byte> data, msghdr& hdr) :
             path{local,
 #ifdef _WIN32
