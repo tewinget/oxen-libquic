@@ -899,6 +899,13 @@ namespace oxen::quic
 
             log::debug(log_cat, "Stream {} successfully created; ready to broadcast", stream->_stream_id);
             stream->set_ready();
+
+            // If using opt::stream_notify then we need to trigger the connection to check for
+            // streams because there might not be any send (or anything else) that will cause us to
+            // immediately check the stream to pick up the initial empty stream frame:
+            if (stream->_notify)
+                packet_io_ready();
+
             _streams[stream->_stream_id] = stream;
             return stream;
         });
