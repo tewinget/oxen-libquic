@@ -5,9 +5,12 @@
 
 #include <oxenc/bt_producer.h>
 
+#include <event2/event.h>
+
 #include <algorithm>
 #include <cassert>
 #include <charconv>
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <system_error>
@@ -64,12 +67,6 @@ namespace oxen::quic
         send(sent_request{*this, encode_response(rid, body, error), rid}.data);
     }
 
-    void BTRequestStream::check_timeouts()
-    {
-        log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
-        return check_timeouts(get_time());
-    }
-
     void BTRequestStream::check_timeouts(std::optional<std::chrono::steady_clock::time_point> now)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
@@ -102,6 +99,44 @@ namespace oxen::quic
         }
     }
 
+    void BTRequestStream::update_timeout()
+    {
+        if (req_expiries.empty())
+        {
+            if (timeout)
+                event_del(timeout.get());
+            return;
+        }
+
+        if (!timeout)
+        {
+            // If this is the first request timeout then set up the timeout event timer:
+            timeout.reset(event_new(
+                    loop.get_event_base(),
+                    -1,          // Not attached to an actual socket
+                    EV_TIMEOUT,  // Stays active (i.e. repeats) once fired
+                    [](evutil_socket_t, short, void* self) {
+                        auto* me = static_cast<BTRequestStream*>(self);
+                        me->check_timeouts(std::chrono::steady_clock::now());
+                        me->update_timeout();
+                    },
+                    this));
+        }
+
+        auto expires_in =
+                std::chrono::ceil<std::chrono::microseconds>(std::chrono::steady_clock::now() - req_expiries.begin()->first);
+        if (expires_in < 0us)
+            expires_in = 0us;
+#ifdef _WIN32
+        using suseconds_t = long;
+#endif
+        timeval exp_interval{
+                .tv_sec = static_cast<time_t>(expires_in / 1s),
+                .tv_usec = static_cast<suseconds_t>((expires_in % 1s).count())};
+
+        event_add(timeout.get(), &exp_interval);
+    }
+
     void BTRequestStream::receive(std::span<const std::byte> data)
     {
         log::trace(log_cat, "btreqstream recv data callback called!");
@@ -126,6 +161,7 @@ namespace oxen::quic
 
         // First time out any pending requests, even if they haven't hit the timer, because we're
         // being closed and so they can never be answered.
+        timeout.reset();
         check_timeouts(std::nullopt);
 
         Stream::close(app_code);
@@ -133,8 +169,9 @@ namespace oxen::quic
 
     void BTRequestStream::register_handler(std::string ep, std::function<void(message)> func)
     {
-        loop.call(
-                [this, ep = std::move(ep), func = std::move(func)]() mutable { func_map[std::move(ep)] = std::move(func); });
+        loop.call([this, ep = std::move(ep), func = std::move(func)]() mutable {
+            registered_endpoints[std::move(ep)] = std::move(func);
+        });
     }
 
     void BTRequestStream::register_generic_handler(std::function<void(message)> request_handler)
@@ -172,14 +209,20 @@ namespace oxen::quic
             auto req = std::move(it->second);
             sent_reqs.erase(it);
 
+            bool was_front = false;
             for (auto [it, end] = req_expiries.equal_range(req->expiry); it != end; ++it)
             {
                 if (it->second == req->req_id)
                 {
+                    was_front = it == req_expiries.begin();
                     req_expiries.erase(it);
                     break;
                 }
             }
+            if (was_front)
+                update_timeout();
+            // otherwise we didn't find it, or it wasn't at the front, so we don't need to reset
+            // the timer (because the timer is synced with the first element).
 
             try
             {
@@ -198,9 +241,9 @@ namespace oxen::quic
         const std::string ep{msg.endpoint()};
         try
         {
-            if (!func_map.empty())
+            if (!registered_endpoints.empty())
             {
-                if (auto itr = func_map.find(ep); itr != func_map.end())
+                if (auto itr = registered_endpoints.find(ep); itr != registered_endpoints.end())
                 {
                     log::debug(log_cat, "Executing request endpoint {}", msg.endpoint());
                     return itr->second(std::move(msg));
@@ -211,6 +254,8 @@ namespace oxen::quic
                 log::debug(log_cat, "Executing generic request handler for endpoint {}", msg.endpoint());
                 return generic_handler(std::move(msg));
             }
+            // We do this via a throw so that generic_handler can also throw it to induce no such
+            // endpoint handling:
             throw no_such_endpoint{};
         }
         catch (const no_such_endpoint&)
@@ -365,6 +410,12 @@ namespace oxen::quic
         // timeout for all (or most) requests in which case each new request timeout *does* land at
         // the end.
         req_expiries.emplace_hint(req_expiries.end(), sent_req->expiry, req_id);
+
+        // If the expiry entry landed at the beginning of the map -- either because it was empty, or
+        // because this has a shorter timeout than what's already in there -- then we need to
+        // (re)schedule the event to this request's timeout.
+        if (req_expiries.begin()->second == req_id)
+            update_timeout();
 
         return sent_req.get();
     }

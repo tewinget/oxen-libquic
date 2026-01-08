@@ -1,6 +1,8 @@
 #include "oxen/quic/stream.hpp"
 #include "unit_test.hpp"
 
+#include <chrono>
+
 namespace oxen::quic::test
 {
     using namespace std::literals;
