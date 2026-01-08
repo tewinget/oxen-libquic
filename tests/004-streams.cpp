@@ -1165,20 +1165,25 @@ namespace oxen::quic::test
                 b_resp = m.body();
         }};
 
-        stream->command("null", "", 50ms, a_cb);
+#ifdef __APPLE__
+        int apple_sucks_factor = 5;
+#else
+        int apple_sucks_factor = 1;
+#endif
+        stream->command("null", "", apple_sucks_factor * 50ms, a_cb);
 
         // Should do nothing yet:
-        REQUIRE_FALSE(a_cb.wait(10ms));
+        REQUIRE_FALSE(a_cb.wait(apple_sucks_factor * 10ms));
 
         stream->command("null", "", 1ms, b_cb);
 
         // A should still be waiting, but B should have timed out:
-        REQUIRE(b_cb.wait(25ms));
+        REQUIRE(b_cb.wait(apple_sucks_factor * 25ms));
         // This was *not* passing before this test was added:
         CHECK(b_resp == "TIMEOUT");
         CHECK_FALSE(a_cb.is_ready());
 
-        REQUIRE(a_cb.wait(75ms));
+        REQUIRE(a_cb.wait(apple_sucks_factor * 75ms));
         CHECK(a_resp == "TIMEOUT");
     }
 
