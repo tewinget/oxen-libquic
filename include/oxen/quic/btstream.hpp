@@ -11,7 +11,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -217,11 +216,23 @@ namespace oxen::quic
         friend class TestHelper;
 
       private:
-        // outgoing requests awaiting response
+        // Outgoing requests awaiting responses
+        //
         // We use shared_ptr's so we can lambda capture it, though it is not actually shared
-        std::deque<std::shared_ptr<sent_request>> sent_reqs;
+        //
+        // This could be an unordered_map, but in practice this is going to have a very number of
+        // elements, where map is likely faster than unordered map (because it can avoid key
+        // hashing):
+        std::map<int64_t, std::shared_ptr<sent_request>> sent_reqs;
 
+        // This tracks any due sent request expiries.
+        std::multimap<std::chrono::steady_clock::time_point, int64_t> req_expiries;
+
+        // Our registered endpoints, i.e. that a remote stream can invoke on us.
         std::unordered_map<std::string, std::function<void(message)>> func_map;
+
+        // Our optional generic handler called when the endpoint is not found in `endpoints` (or if
+        // pre-registered endpoints are not used at all):
         std::function<void(message)> generic_handler;
 
         std::vector<std::byte> buf;

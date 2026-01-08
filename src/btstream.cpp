@@ -74,14 +74,23 @@ namespace oxen::quic
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
 
-        while (!sent_reqs.empty())
+        std::list<std::shared_ptr<sent_request>> expired;
+        auto it = req_expiries.begin();
+        for (; it != req_expiries.end() && (!now || it->first <= *now); ++it)
         {
-            auto& f = *sent_reqs.front();
-            if (now && !f.is_expired(*now))
-                return;
-            auto ptr = std::move(sent_reqs.front());
-            sent_reqs.pop_front();
+            auto id = it->second;
 
+            if (auto srit = sent_reqs.find(id); srit != sent_reqs.end())
+            {
+                expired.push_back(std::move(srit->second));
+                sent_reqs.erase(srit);
+            }
+        }
+        req_expiries.erase(req_expiries.begin(), it);
+
+        for (auto& sr : expired)
+        {
+            auto& f = *sr;
             try
             {
                 f.cb(std::move(f).to_timeout());
@@ -141,27 +150,44 @@ namespace oxen::quic
         if (auto type = msg.type(); type == message::TYPE_REPLY || type == message::TYPE_ERROR)
         {
             log::debug(log_cat, "Looking for request with req_id={}", msg.req_id);
-            // Iterate using forward iterators, s.t. we go highest (newest) rids to lowest (oldest) rids.
-            // As a result, our comparator checks if the sent request ID is greater thanthan the target rid
-            auto itr = std::lower_bound(
-                    sent_reqs.begin(),
-                    sent_reqs.end(),
-                    msg.req_id,
-                    [](const std::shared_ptr<sent_request>& sr, int64_t rid) { return sr->req_id < rid; });
 
-            if (itr != sent_reqs.end())
+            // It is quite common that we get responses in the same order that we made requests,
+            // and so this optimization to check the front first, which will be the oldest
+            // outstanding request, saving a log-n search in the map:
+            auto it = sent_reqs.begin();
+            if (it != sent_reqs.end() && it->first != msg.req_id)
+                it = sent_reqs.find(msg.req_id);
+
+            if (it == sent_reqs.end())
             {
-                log::debug(log_cat, "Successfully matched response (req_id={}) to sent request!", msg.req_id);
-                auto req = std::move(*itr);
-                sent_reqs.erase(itr);
-                try
+                log::debug(
+                        log_cat,
+                        "Ignoring {} (req_id={}): no handler found; probably a late, already-timed-out response",
+                        type == message::TYPE_REPLY ? "reply" : "error response",
+                        msg.req_id);
+                return;
+            }
+
+            log::debug(log_cat, "Successfully matched response (req_id={}) to sent request!", msg.req_id);
+            auto req = std::move(it->second);
+            sent_reqs.erase(it);
+
+            for (auto [it, end] = req_expiries.equal_range(req->expiry); it != end; ++it)
+            {
+                if (it->second == req->req_id)
                 {
-                    req->cb(std::move(msg));
+                    req_expiries.erase(it);
+                    break;
                 }
-                catch (const std::exception& e)
-                {
-                    log::error(log_cat, "Uncaught exception from response handler: {}", e.what());
-                }
+            }
+
+            try
+            {
+                req->cb(std::move(msg));
+            }
+            catch (const std::exception& e)
+            {
+                log::error(log_cat, "Uncaught exception from response handler: {}", e.what());
             }
             return;
         }
@@ -331,7 +357,16 @@ namespace oxen::quic
             }
             return nullptr;
         }
-        return sent_reqs.emplace_back(std::move(req)).get();
+        auto req_id = req->req_id;
+        auto& sent_req = sent_reqs[req_id];
+        sent_req = std::move(req);
+
+        // We hint at the end because it is an extremely common pattern that you use the same
+        // timeout for all (or most) requests in which case each new request timeout *does* land at
+        // the end.
+        req_expiries.emplace_hint(req_expiries.end(), sent_req->expiry, req_id);
+
+        return sent_req.get();
     }
 
     size_t BTRequestStream::num_pending() const

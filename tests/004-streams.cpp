@@ -1046,6 +1046,151 @@ namespace oxen::quic::test
         CHECK(got_timeout);
     }
 
+    TEST_CASE("004 - BTRequestStream reply matching", "[004][streams][btreq][delayed_reply]")
+    {
+        // Prior to the commit that added this test, in the case of timeouts a delayed response
+        // could get matched to the wrong handler.
+        //
+        // To reproduce:
+        // C sends request R1 to S
+        // R1 response does not arrive and the callback is invoked with a timeout
+        // C sends request R2 to S
+        // R1 response arrives
+        // R2 response arrives
+        //
+        // The R1 response would end up firing the *R2* response handler, rather than dropping it
+        // (since the R1 handler is already gone), dropping the R2 handler, and then the R2 response
+        // would get dropped.
+
+        auto client_closed = callback_waiter{[](Connection&, uint64_t) {}};
+
+        Loop loop;
+
+        Address server_local{};
+        Address client_local{};
+
+        auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
+
+        static constexpr auto RESP_DELAY = 50ms;
+
+        auto server_endpoint = Endpoint::endpoint(loop, server_local, [](Connection& c) {
+            auto ss = c.queue_incoming_stream<BTRequestStream>();
+            ss->register_handler("a", [&](message msg) {
+                c.endpoint().loop.call_later(RESP_DELAY, [msg = std::move(msg)] { msg.respond("A"); });
+            });
+            ss->register_handler("b", [&](message msg) {
+                c.endpoint().loop.call_later(RESP_DELAY, [msg = std::move(msg)] { msg.respond("B"); });
+            });
+        });
+        server_endpoint->listen(server_tls);
+
+        RemoteAddress client_remote{defaults::SERVER_PUBKEY, LOCALHOST, server_endpoint->local().port()};
+
+        auto client_endpoint = Endpoint::endpoint(loop, client_local);
+        auto conn = client_endpoint->connect(client_remote, client_tls, client_closed);
+        auto stream = conn->open_stream<BTRequestStream>();
+
+        std::string a_resp, b_resp;
+        auto a_cb = callback_waiter{[&](message m) {
+            if (m.timed_out)
+                a_resp = "TIMEOUT";
+            else
+                a_resp = m.body();
+        }};
+        auto b_cb = callback_waiter{[&](message m) {
+            if (m.timed_out)
+                b_resp = "TIMEOUT";
+            else
+                b_resp = m.body();
+        }};
+        auto sent_a_at = std::chrono::steady_clock::now();
+
+        stream->command("a", "", -1ms, a_cb);
+        // We time out immediately, but we actually need the clock ms value to advance before the
+        // stream timeouts check will actually fire the callback with a timeout:
+        std::this_thread::sleep_for(2ms);
+        TestHelper::check_stream_timeouts(*stream);
+        REQUIRE(a_cb.is_ready());
+        CHECK(a_resp == "TIMEOUT");
+
+        // Sleep until halfway in the first request waiting period, then fire off a second request.
+        // The first response should then arrive about halfway into the delay for the second
+        // request.  The bug that was here was that the *first* response went to the *second*
+        // request handler:
+        std::this_thread::sleep_until(sent_a_at + RESP_DELAY / 2);
+
+        stream->command("b", "", RESP_DELAY * 2, b_cb);
+        REQUIRE(b_cb.wait(1s));
+        CHECK(b_resp == "B");
+    }
+
+    TEST_CASE("004 - BTRequestStream timeout", "[004][streams][btreq][request_timeout]")
+    {
+        // Prior to the commit that added this test, the code that processed delays only looked at
+        // queued requests until it found one that expires in the future.  This meant that if you
+        // had a request with a very long timeout that actually times out, nothing sent after it
+        // could time out until the first one did.
+
+        auto client_closed = callback_waiter{[](Connection&, uint64_t) {}};
+
+        Loop loop;
+
+        Address server_local{};
+        Address client_local{};
+
+        auto [client_tls, server_tls] = defaults::tls_creds_from_ed_keys();
+
+        auto server_endpoint = Endpoint::endpoint(loop, server_local, [](Connection& c) {
+            auto ss = c.queue_incoming_stream<BTRequestStream>();
+            ss->register_handler("null", [&](message) {});
+        });
+        server_endpoint->listen(server_tls);
+
+        RemoteAddress client_remote{defaults::SERVER_PUBKEY, LOCALHOST, server_endpoint->local().port()};
+
+        auto client_endpoint = Endpoint::endpoint(loop, client_local);
+        auto conn = client_endpoint->connect(client_remote, client_tls, client_closed);
+        auto stream = conn->open_stream<BTRequestStream>();
+
+        std::string a_resp, b_resp;
+        auto a_cb = callback_waiter{[&](message m) {
+            if (m.timed_out)
+                a_resp = "TIMEOUT";
+            else
+                a_resp = m.body();
+        }};
+        auto b_cb = callback_waiter{[&](message m) {
+            if (m.timed_out)
+                b_resp = "TIMEOUT";
+            else
+                b_resp = m.body();
+        }};
+
+        stream->command("null", "", 25ms, a_cb);
+
+        // Should do nothing yet:
+        std::this_thread::sleep_for(2ms);
+        TestHelper::check_stream_timeouts(*stream);
+        REQUIRE_FALSE(a_cb.is_ready());
+
+        stream->command("null", "", 1ms, b_cb);
+
+        std::this_thread::sleep_for(3ms);
+        TestHelper::check_stream_timeouts(*stream);
+
+        // A should still be waiting, but B should have timed out:
+        CHECK_FALSE(a_cb.is_ready());
+        // This was *not* passing before this test was added:
+        REQUIRE(b_cb.is_ready());
+        CHECK(b_resp == "TIMEOUT");
+
+        std::this_thread::sleep_for(25ms);
+        TestHelper::check_stream_timeouts(*stream);
+
+        REQUIRE(a_cb.is_ready());
+        CHECK(a_resp == "TIMEOUT");
+    }
+
     TEST_CASE("004 - Exceptions when opening/queueing streams on a closed connection", "[004][streams][dead][exception]")
     {
         // Related to the above test case, if you opened or queued a stream in a race with the

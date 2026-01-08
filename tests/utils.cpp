@@ -140,6 +140,11 @@ namespace oxen::quic
         ep._next_rid += by;
     }
 
+    void TestHelper::check_stream_timeouts(Stream& s)
+    {
+        s.endpoint.loop.call_get([&s] { s.check_timeouts(); });
+    }
+
     std::pair<std::shared_ptr<GNUTLSCreds>, std::shared_ptr<GNUTLSCreds>> test::defaults::tls_creds_from_ed_keys()
     {
         auto client = GNUTLSCreds::make_from_ed_keys(CLIENT_SEED, CLIENT_PUBKEY);
