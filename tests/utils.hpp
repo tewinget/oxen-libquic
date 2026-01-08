@@ -88,8 +88,6 @@ namespace oxen::quic
         static Connection* get_conn(std::shared_ptr<Endpoint>& ep, std::shared_ptr<Connection>& conn);
 
         static UDPSocket::socket_t get_sock(Endpoint& ep);
-
-        static void check_stream_timeouts(Stream& s);
     };
 
     namespace test::defaults

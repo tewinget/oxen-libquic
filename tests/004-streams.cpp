@@ -1108,11 +1108,8 @@ namespace oxen::quic::test
         auto sent_a_at = std::chrono::steady_clock::now();
 
         stream->command("a", "", -1ms, a_cb);
-        // We time out immediately, but we actually need the clock ms value to advance before the
-        // stream timeouts check will actually fire the callback with a timeout:
-        std::this_thread::sleep_for(2ms);
-        TestHelper::check_stream_timeouts(*stream);
-        REQUIRE(a_cb.is_ready());
+
+        REQUIRE(a_cb.wait(20ms));
         CHECK(a_resp == "TIMEOUT");
 
         // Sleep until halfway in the first request waiting period, then fire off a second request.
@@ -1168,28 +1165,20 @@ namespace oxen::quic::test
                 b_resp = m.body();
         }};
 
-        stream->command("null", "", 25ms, a_cb);
+        stream->command("null", "", 50ms, a_cb);
 
         // Should do nothing yet:
-        std::this_thread::sleep_for(2ms);
-        TestHelper::check_stream_timeouts(*stream);
-        REQUIRE_FALSE(a_cb.is_ready());
+        REQUIRE_FALSE(a_cb.wait(10ms));
 
         stream->command("null", "", 1ms, b_cb);
 
-        std::this_thread::sleep_for(3ms);
-        TestHelper::check_stream_timeouts(*stream);
-
         // A should still be waiting, but B should have timed out:
-        CHECK_FALSE(a_cb.is_ready());
+        REQUIRE(b_cb.wait(25ms));
         // This was *not* passing before this test was added:
-        REQUIRE(b_cb.is_ready());
         CHECK(b_resp == "TIMEOUT");
+        CHECK_FALSE(a_cb.is_ready());
 
-        std::this_thread::sleep_for(25ms);
-        TestHelper::check_stream_timeouts(*stream);
-
-        REQUIRE(a_cb.is_ready());
+        REQUIRE(a_cb.wait(75ms));
         CHECK(a_resp == "TIMEOUT");
     }
 
