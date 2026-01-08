@@ -1130,6 +1130,12 @@ namespace oxen::quic::test
         auto sstream_id = fut_sstream.get();
         CHECK(sstream_id == 0);
 
+        // This sleep triggered an issue (fixed in the commit that adds this) where an open stream
+        // with stream notify was failing to actually send the intended empty stream frame; without
+        // the sleep it would usually pass because it would sneak in with something else triggering
+        // stream flushing (but would be a spurious failure, typically on slower systems):
+        std::this_thread::sleep_for(10ms);
+
         auto s_str = s_conn_fut.get()->open_stream<BTRequestStream>(opt::stream_notify);
 
         require_future(fut_cstream);
