@@ -2082,15 +2082,6 @@ namespace oxen::quic
         return conn;
     }
 
-    void Connection::check_stream_timeouts()
-    {
-        for (const auto* s : {&_streams, &_stream_queue})
-            for (const auto& [id, stream] : *s)
-                stream->check_timeouts();
-        for (const auto& s : pending_streams)
-            s->check_timeouts();
-    }
-
     size_t Connection::num_streams_active() const
     {
         return _loop.call_get([this] { return _streams.size(); });
