@@ -220,7 +220,7 @@ namespace oxen::quic
         //
         // We use shared_ptr's so we can lambda capture it, though it is not actually shared
         //
-        // This could be an unordered_map, but in practice this is going to have a very number of
+        // This could be an unordered_map, but in practice this is going to have a tiny number of
         // elements, where map is likely faster than unordered map (because it can avoid key
         // hashing):
         std::map<int64_t, std::shared_ptr<sent_request>> sent_reqs;
