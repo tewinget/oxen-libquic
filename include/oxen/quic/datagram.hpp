@@ -329,6 +329,7 @@ namespace oxen::quic
       protected:
         friend class Connection;
         friend class Loop;
+        friend class JobQueue;
         friend struct dgram::rotating_buffer;
         friend class TestHelper;
 

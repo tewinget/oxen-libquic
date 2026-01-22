@@ -147,9 +147,9 @@ namespace oxen::quic
 
         log::debug(log_cat, "Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
 
-        setup_job_waker();
-
         std::promise<void> p;
+
+        main_queue = create_job_queue();
 
         loop_thread = std::thread{[this, &p] {
             log::debug(log_cat, "Starting event loop run");
@@ -164,17 +164,31 @@ namespace oxen::quic
         log::info(log_cat, "libevent loop is started");
     }
 
-    struct Loop::OneShotDelayed
+    std::unique_ptr<JobQueue> Loop::make_job_queue()
     {
-        Loop& loop;
+        return main_queue->call_get([this]() { return create_job_queue(); });
+    }
+
+    struct JobQueue::OneShotDelayed
+    {
+        JobQueue& jq;
         std::function<void()> f;
 
-        OneShotDelayed(Loop& loop, std::function<void()> f) : loop{loop}, f{std::move(f)} {}
+        OneShotDelayed(JobQueue& jq_, std::function<void()> f) : jq{jq_}, f{std::move(f)} {}
     };
 
-    Loop::~Loop()
+    JobQueue::JobQueue(Loop& l) : loop{l}
     {
-        log::debug(log_cat, "Shutting down loop...");
+        setup_job_waker();
+    }
+
+    JobQueue::~JobQueue()
+    {
+        log::debug(log_cat, "Destroying loop job queue.");
+        *running = false;
+
+        [[maybe_unused]] auto res = event_del(job_waker.get());
+        assert(res == 0);
 
         for (auto& t : tickers)
         {
@@ -188,6 +202,15 @@ namespace oxen::quic
         for (auto* osd : delayed_events)
             delete osd;
         delayed_events.clear();
+    }
+
+    Loop::~Loop()
+    {
+        log::debug(log_cat, "Shutting down loop...");
+
+        // JobQueue has a canary such that if it's processing jobs as it is destroyed
+        // it should be safe, but we *do* want to stop/destroy it on the loop thread.
+        main_queue->call_get([this]() { main_queue.reset(); });
 
         event_base_loopbreak(ev_loop.get());
         loop_thread.join();
@@ -199,7 +222,7 @@ namespace oxen::quic
 #endif
     }
 
-    std::shared_ptr<Ticker> Loop::make_ticker()
+    std::shared_ptr<Ticker> JobQueue::make_ticker()
     {
         std::erase_if(tickers, [](auto& wp) { return wp.expired(); });
         auto t = make_shared<Ticker>();
@@ -207,12 +230,12 @@ namespace oxen::quic
         return t;
     }
 
-    std::shared_ptr<Wakeable> Loop::make_wakeable(std::function<void()> callback)
+    std::shared_ptr<Wakeable> JobQueue::make_wakeable(std::function<void()> callback)
     {
         auto w = make_shared<Wakeable>();
         w->f = std::move(callback);
         w->ev.reset(event_new(
-                ev_loop.get(),
+                loop.ev_loop.get(),
                 -1,
                 0,
                 [](evutil_socket_t, short, void* w) {
@@ -221,45 +244,49 @@ namespace oxen::quic
                         wakeable->f();
                 },
                 w.get()));
+        wakeables.emplace_back(w);
         return w;
     }
 
     void Wakeable::wake()
     {
+        if (!ev)
+            return;
+
         event_active(ev.get(), 0, 0);
     }
 
-    void Loop::setup_job_waker()
+    void JobQueue::setup_job_waker()
     {
         // Almost identical to the generic make_wakeable, except that we avoid the std::function and
         // its implicit virtual function call.
         job_waker.reset(event_new(
-                ev_loop.get(),
+                loop.ev_loop.get(),
                 -1,
                 0,
                 [](evutil_socket_t, short, void* self) {
                     log::trace(log_cat, "processing job queue");
-                    static_cast<Loop*>(self)->process_job_queue();
+                    static_cast<JobQueue*>(self)->process_job_queue();
                 },
                 this));
         assert(job_waker);
     }
 
-    void Loop::add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook)
+    void JobQueue::add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook)
     {
         auto* handler = new OneShotDelayed{*this, std::move(hook)};
         delayed_events.push_back(handler);
         auto& h = *handler;
         const auto delay_tv = loop_time_to_timeval(delay);
         event_base_once(
-                get_event_base(),
+                loop.get_event_base(),
                 -1,
                 EV_TIMEOUT,
                 [](evutil_socket_t, short, void* e) mutable {
                     auto* h = static_cast<OneShotDelayed*>(e);
                     if (h->f)
                         h->f();
-                    auto& de = h->loop.delayed_events;
+                    auto& de = h->jq.delayed_events;
                     if (auto it = std::find(de.begin(), de.end(), h); it != de.end())
                         de.erase(it);
                     delete h;
@@ -268,7 +295,7 @@ namespace oxen::quic
                 &delay_tv);
     }
 
-    void Loop::process_job_queue()
+    void JobQueue::process_job_queue()
     {
         log::trace(log_cat, "Event loop processing job queue");
         assert(inside());
@@ -280,7 +307,12 @@ namespace oxen::quic
             job_queue.swap(swapped_queue);
         }
 
-        while (not swapped_queue.empty())
+        // copy shared_ptr<bool> as a "running" canary, as this object's destructor
+        // should eventually be one of the queued jobs, after which no further jobs
+        // should run.
+        auto running_ptr = running;
+
+        while (not swapped_queue.empty() && *running_ptr)
         {
             auto job = swapped_queue.front();
             swapped_queue.pop();
@@ -288,8 +320,18 @@ namespace oxen::quic
         }
     }
 
+    bool JobQueue::inside() const
+    {
+        return loop.inside();
+    }
+
+    ::event_base* JobQueue::get_event_base() const
+    {
+        return loop.get_event_base();
+    }
+
     // Wrapper around event_active so that we can keep libevent out of the public headers.
-    void Loop::activate(::event& evt)
+    void JobQueue::activate(::event& evt)
     {
         event_active(&evt, 0, 0);
     }

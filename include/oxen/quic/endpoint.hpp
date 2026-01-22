@@ -159,6 +159,7 @@ namespace oxen::quic
       private:
         friend class Network;
         friend class Loop;
+        friend class JobQueue;
         friend class Connection;
         friend struct connection_callbacks;
         friend class TestHelper;

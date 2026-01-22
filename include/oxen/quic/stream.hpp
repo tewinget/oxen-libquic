@@ -67,6 +67,7 @@ namespace oxen::quic
         friend class Connection;
         friend class Network;
         friend class Loop;
+        friend class JobQueue;
 
       protected:
         template <typename... Opts>

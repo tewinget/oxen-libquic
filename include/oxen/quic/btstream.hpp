@@ -247,6 +247,7 @@ namespace oxen::quic
         friend struct sent_request;
         friend class Network;
         friend class Loop;
+        friend class JobQueue;
 
       protected:
         template <typename... Opt>
