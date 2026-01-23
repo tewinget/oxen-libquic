@@ -266,6 +266,11 @@ namespace oxen::quic
                 return func(std::forward<decltype(args)>(args)...);
             };
         }
+
+        void call()
+        {
+            this->operator Func_t()();
+        }
     };
 
     /// Waits for some condition to be satisfied, sleeping between checks.  Returns the result of
