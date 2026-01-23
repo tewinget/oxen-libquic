@@ -1,7 +1,7 @@
-#include <mutex>
-
 #include "unit_test.hpp"
 #include "utils.hpp"
+
+#include <mutex>
 
 #ifndef _WIN32
 extern "C"
@@ -21,10 +21,10 @@ namespace oxen::quic::test
             Loop loop;
             auto jq = loop.make_job_queue();
 
-            callback_waiter queued{[](){}};
-            callback_waiter good{[](){}};
-            callback_waiter bad{[](){}};
-            callback_waiter main_ok{[](){}};
+            callback_waiter queued{[]() {}};
+            callback_waiter good{[]() {}};
+            callback_waiter bad{[]() {}};
+            callback_waiter main_ok{[]() {}};
 
             // queue 3 jobs:
             //
@@ -34,32 +34,58 @@ namespace oxen::quic::test
             // the next should destroy the created job queue
             //
             // the third should not execute
-            loop.call([&](){
-                    jq->call_soon([&]() {
-                            good.call();
-                            });
+            loop.call([&]() {
+                jq->call_soon([&]() { good.call(); });
 
-                    jq->call_soon([&]() {
-                            jq.reset();
-                            });
+                jq->call_soon([&]() { jq.reset(); });
 
-                    jq->call_soon([&]() {
-                            bad.call();
-                            });
+                jq->call_soon([&]() { bad.call(); });
 
-                    // call_soon so it gets queued, as it is being called from inside the loop.
-                    loop.call_soon([&](){
-                            main_ok.call();
-                            });
+                // call_soon so it gets queued, as it is being called from inside the loop.
+                loop.call_soon([&]() { main_ok.call(); });
 
-                    queued.call();
-                    });
+                queued.call();
+            });
 
             REQUIRE(queued.wait(10ms));
 
             REQUIRE(good.wait(10ms));
             REQUIRE_FALSE(bad.wait(10ms));
             REQUIRE(main_ok.wait(10ms));
+        }
+
+        SECTION("Tickers stop when their JobQueue dies")
+        {
+            Loop loop;
+            auto jq = loop.make_job_queue();
+
+            callback_waiter queued{[]() {}};
+
+            std::atomic<int> bad_count = 0;
+            std::atomic<int> good_count = 0;
+            std::shared_ptr<Ticker> bad;
+            std::shared_ptr<Ticker> good;
+
+            // increment each counter every interval
+            loop.call([&]() {
+                bad = jq->call_every(1ms, [&]() { bad_count++; });
+                good = loop.call_every(1ms, [&]() { good_count++; });
+
+                loop.call_later(20ms, [&]() {
+                    // our ticker references must expire before the job queue does
+                    bad.reset();
+
+                    jq.reset();
+                });
+
+                queued.call();
+            });
+
+            REQUIRE(queued.wait(10ms));
+            std::this_thread::sleep_for(40ms);
+
+            // allows for a bit of stupid timing, should be sufficient
+            REQUIRE(good_count > bad_count + 5);
         }
     }
 

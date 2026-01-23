@@ -46,12 +46,14 @@ namespace oxen::quic
 
     bool Ticker::stop()
     {
-        if (event_del(ev.get()) != 0)
+        if (!alive)
+            return true;
+
+        if (ev && event_del(ev.get()) != 0)
         {
             log::warning(log_cat, "EventHandler failed to pause repeating event!");
             return false;
         }
-
         return true;
     }
 
@@ -87,12 +89,6 @@ namespace oxen::quic
 
         if (start_immediately and not start())
             log::warning(log_cat, "Failed to immediately start one-off event!");
-    }
-
-    Ticker::~Ticker()
-    {
-        ev.reset();
-        f = nullptr;
     }
 
     static std::vector<std::string_view> get_ev_methods()
@@ -224,15 +220,18 @@ namespace oxen::quic
 
     std::shared_ptr<Ticker> JobQueue::make_ticker()
     {
+        if (!running)
+            return nullptr;
+
         std::erase_if(tickers, [](auto& wp) { return wp.expired(); });
-        auto t = make_shared<Ticker>();
+        auto t = make_shared<Ticker>(running);
         tickers.emplace_back(t);
         return t;
     }
 
     std::shared_ptr<Wakeable> JobQueue::make_wakeable(std::function<void()> callback)
     {
-        auto w = make_shared<Wakeable>();
+        auto w = make_shared<Wakeable>(running);
         w->f = std::move(callback);
         w->ev.reset(event_new(
                 loop.ev_loop.get(),
@@ -250,7 +249,7 @@ namespace oxen::quic
 
     void Wakeable::wake()
     {
-        if (!ev)
+        if (!ev || !alive)
             return;
 
         event_active(ev.get(), 0, 0);

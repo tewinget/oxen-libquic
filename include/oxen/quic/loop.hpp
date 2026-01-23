@@ -25,15 +25,14 @@ namespace oxen::quic
         event_ptr ev;
         timeval interval;
         std::function<void()> f;
+        std::shared_ptr<bool> alive;
 
         void init_event(
                 ::event_base* loop, std::chrono::microseconds _t, std::function<void()> task, bool start_immediately = true);
 
-        Ticker() = default;
+        Ticker(std::shared_ptr<bool> keepalive) : alive{keepalive} {}
 
       public:
-        ~Ticker();
-
         /** Starts the repeating event on the given interval on Ticker creation.  Does nothing if
          *   already active.
             Returns:
@@ -64,8 +63,9 @@ namespace oxen::quic
 
         event_ptr ev;
         std::function<void()> f;
+        std::shared_ptr<bool> alive;
 
-        Wakeable() = default;
+        Wakeable(std::shared_ptr<bool> keepalive) : alive{keepalive} {}
 
       public:
         /// Call to schedule f() to be called, if not already scheduled.
@@ -312,6 +312,11 @@ namespace oxen::quic
         // The owner of this JobQueue is responsible for making sure that the JobQueue is
         // deleted on the loop thread.  The easiest way to do this is to make sure the owning
         // object is deleted on the loop thread.
+        //
+        // If you keep objects alive which you created with this queue, e.g. tickers, wakeables,
+        // etc. you are responsible for making sure any concrete references to them (especially
+        // shared_ptr) are gone before the JobQueue is.  Their destructors are (necessarily and
+        // intentionally) jobs on the job queue from which they spawned.
         std::unique_ptr<JobQueue> make_job_queue();
 
         bool inside() const { return std::this_thread::get_id() == loop_thread_id; }

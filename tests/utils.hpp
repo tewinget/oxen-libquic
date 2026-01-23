@@ -267,10 +267,7 @@ namespace oxen::quic
             };
         }
 
-        void call()
-        {
-            this->operator Func_t()();
-        }
+        void call() { this->operator Func_t()(); }
     };
 
     /// Waits for some condition to be satisfied, sleeping between checks.  Returns the result of
