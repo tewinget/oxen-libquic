@@ -1,5 +1,6 @@
 #include "utils.hpp"
 
+#include <oxen/log/level.hpp>
 #include <oxen/quic/connection.hpp>
 #include <oxen/quic/endpoint.hpp>
 #include <oxen/quic/loop.hpp>
@@ -228,8 +229,10 @@ namespace oxen::quic
 
     void add_log_opts(CLI::App& cli, std::string& file, std::string& level)
     {
-        file = "stderr";
-        level = "warning";
+        if (file.empty())
+            file = "stderr";
+        if (level.empty())
+            level = "warning";
 
         cli.add_option("-l,--log-file", file, "Log output filename, or one of stdout/-/stderr/syslog.")
                 ->type_name("FILE")
@@ -237,8 +240,7 @@ namespace oxen::quic
 
         cli.add_option("-L,--log-level", level, "Log verbosity level; one of trace, debug, info, warn, error, critical, off")
                 ->type_name("LEVEL")
-                ->capture_default_str()
-                ->check(CLI::IsMember({"trace", "debug", "info", "warn", "error", "critical", "off"}));
+                ->capture_default_str();
     }
 
     void common_server_opts(
@@ -284,11 +286,12 @@ namespace oxen::quic
         if (store_0rtt.empty())
             store_0rtt = std::filesystem::path{u8"./libquic-test-0rtt-cache.bin"};
 
-        cli.add_option("-R,--remote", remote_addr, "Remote address to connect to")
-                ->type_name("IP:PORT")
-                ->capture_default_str()
-                ->check([](const std::string& val) { return val.empty() ? "address cannot be empty" : ""; })
-                ->force_callback();
+        auto rem = cli.add_option("-R,--remote", remote_addr, "Remote address to connect to")
+                           ->type_name("IP:PORT")
+                           ->required()
+                           ->check([](const std::string& val) { return val.empty() ? "address cannot be empty" : ""; });
+        if (!remote_addr.empty())
+            rem->capture_default_str();
 
         auto* rem_pubkey = cli.add_option_group("remote pubkey");
         rem_pubkey->add_option("-P,--remote-pubkey", remote_pubkey, "Remote server pubkey")
@@ -364,8 +367,6 @@ namespace oxen::quic
 
     void setup_logging(std::string out, const std::string& level)
     {
-        log::Level lvl = log::level_from_string(level);
-
         constexpr std::array print_vals = {"stdout", "-", "", "stderr", "nocolor", "stdout-nocolor", "stderr-nocolor"};
         log::Type type;
         if (std::count(print_vals.begin(), print_vals.end(), out))
@@ -376,9 +377,9 @@ namespace oxen::quic
             type = log::Type::File;
 
         oxen::log::add_sink(type, out, "[%T.%f] [%*] [\x1b[1m%n\x1b[0m:%^%l%$|\x1b[3m%g:%#\x1b[0m] %v");
-        oxen::log::reset_level(lvl);
+        oxen::log::apply_categories(level);
 
-        if (lvl <= oxen::log::Level::trace)
+        if (oxen::log::get_level("gnutls") <= oxen::log::Level::trace)
             enable_gnutls_logging();
     }
 
