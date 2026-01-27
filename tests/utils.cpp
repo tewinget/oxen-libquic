@@ -561,28 +561,35 @@ namespace oxen::quic
 
     void packet_delayer::init(std::shared_ptr<Endpoint> ep_)
     {
-        if (ep)
+        if (ep.use_count())
             throw std::logic_error{"Cannot call packet_delayer::init more than once"};
-        ep = std::move(ep_);
-        if (!ep)
+        if (!ep_)
             throw std::logic_error{"packet_delayer::init called with nullptr endpoint"};
 
+        ep = ep_;
+
         sock = std::make_unique<UDPSocket>(
-                ep->loop.get_event_base(), ep->local(), false, [wself = weak_from_this()](Packet&& pkt) {
+                ep_->loop.get_event_base(), ep_->local(), false, [wself = weak_from_this()](Packet&& pkt) {
                     log::debug(log_cat, "incoming {}B udp packet from {}; delaying delivery", pkt.size(), pkt.path);
                     auto sself = wself.lock();
                     if (!sself)
                         return;
                     auto& self = *sself;
+                    auto ep = self.ep.lock();
+                    if (!ep)
+                        return;
 
                     pkt.ensure_owned_data();
                     self.incoming.emplace_back(++self.in_id, std::move(pkt));
 
-                    self.ep->loop.call_later(self.delay.load(), [wself, id = self.in_id] {
+                    ep->loop.call_later(self.delay.load(), [wself, id = self.in_id] {
                         auto sself = wself.lock();
                         if (!sself)
                             return;
                         auto& self = *sself;
+                        auto ep = self.ep.lock();
+                        if (!ep)
+                            return;
 
                         // Process all packets <= out id to ensure delivery order (see extended comment below)
                         while (!self.incoming.empty())
@@ -595,12 +602,12 @@ namespace oxen::quic
                                     "completing incoming delayed delivery of {}B packet on path {}",
                                     pkt.size(),
                                     pkt.path);
-                            self.ep->manually_receive_packet(std::move(pkt));
+                            ep->manually_receive_packet(std::move(pkt));
                             self.incoming.pop_front();
                         }
                     });
                 });
-        ep->set_local(sock->address());
+        ep_->set_local(sock->address());
     }
 
     packet_delayer::operator opt::manual_routing()
@@ -610,13 +617,11 @@ namespace oxen::quic
             if (!sself)
                 return;
             auto& self = *sself;
-            if (!self.ep)
-            {
-                log::critical(log_cat, "Error: packet_delayer received packet without a call to init()");
+            auto ep = self.ep.lock();
+            if (!ep)
                 return;
-            }
             self.outgoing.emplace_back(++self.out_id, p, std::vector(pkt.begin(), pkt.end()));
-            self.ep->loop.call_later(self.delay.load(), [wself, id = self.out_id] {
+            ep->loop.call_later(self.delay.load(), [wself, id = self.out_id] {
                 auto sself = wself.lock();
                 if (!sself)
                     return;

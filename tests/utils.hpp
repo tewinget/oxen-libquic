@@ -360,7 +360,8 @@ namespace oxen::quic
     // loop and is not meant to be particularly performant.
     //
     // To use this you must:
-    // - construct this object via `auto delayer = packet_delayer::make(10ms);`
+    // - construct this object via `auto delayer = packet_delayer::make(10ms);`.  You generally want
+    //   this to outlast the loop (i.e. declare it earlier) to avoid destruction issues.
     // - construct the endpoint, passing `*delayer` to the `endpoint(...)` call (this object
     //   auto-converts into the appropriate manual routing option).
     // - call `delayer->init(ep)`, providing the endpoint which starts the actual underlying socket,
@@ -371,7 +372,7 @@ namespace oxen::quic
         std::atomic<std::chrono::milliseconds> delay;
 
       private:
-        std::shared_ptr<Endpoint> ep;
+        std::weak_ptr<Endpoint> ep;
         std::unique_ptr<UDPSocket> sock;
         std::deque<std::tuple<int64_t, Path, std::vector<std::byte>>> outgoing;
         std::deque<std::pair<int64_t, Packet>> incoming;
