@@ -72,6 +72,27 @@ namespace oxen::quic
         void wake();
     };
 
+    // Get an independent JobQueue to use for jobs, call_later, loop deleters, etc.
+    //
+    // Do not use this unless you know you need it.
+    //
+    // The interface is the same as `Loop::call` et al, but a JobQueue can have a shorter lifetime
+    // than the Loop on which it runs.  The purpose of this is if you have multiple components using
+    // the same Loop and one of those components may have jobs queued which reference it *after* its
+    // destructor, that component can instead own this JobQueue and those jobs will not be
+    // processed, but anything else using the Loop will be unaffected.
+    //
+    // Effectively this allows a subqueue of events that can be cancelled (via JobQueue destruction)
+    // without needing to cancel jobs of unrelated job queues.
+    //
+    // This queue can be stopped or destroyed *off* the loop thread, if necessary, but note that
+    // stopping and destruction still requires that the loop thread is usable to perform the actual
+    // destruction, and so the loop this class uses must outlive this queue.
+    //
+    // If you keep objects alive which you created with this queue, e.g. tickers, wakeables, etc.
+    // you are responsible for making sure any concrete references to them (especially shared_ptr)
+    // are gone before the JobQueue is.  Their destructors are (necessarily and intentionally) jobs
+    // on the job queue from which they spawned.
     class JobQueue
     {
         friend class Loop;
@@ -107,6 +128,17 @@ namespace oxen::quic
       public:
         JobQueue(Loop& l);
 
+        // Cancels all jobs in the queue and deletes this job queue's event from the event loop.
+        // This is normally called automatically during destruction, but can be called before
+        // destruction if needed.  This method does nothing if the queue has already been stopped.
+        //
+        // Stopping is terminal (i.e. there is no way to restart a queue other than replacing it).
+        //
+        // Note that this method requires the event loop and will block until the owning Loop is
+        // able to process it.
+        void stop();
+
+        // Calls stop() if not already called.
         ~JobQueue();
 
         // Returns a pointer deleter that defers the actual destruction call to this network
@@ -282,9 +314,7 @@ namespace oxen::quic
         std::thread::id loop_thread_id;
 
       private:
-        std::unique_ptr<JobQueue> main_queue;
-
-        std::unique_ptr<JobQueue> create_job_queue() { return std::make_unique<JobQueue>(*this); }
+        JobQueue main_queue{*this};
 
       public:
         Loop();
@@ -298,36 +328,15 @@ namespace oxen::quic
 
         ::event_base* get_event_base() const { return ev_loop.get(); }
 
-        // Get an independent JobQueue to use for jobs, call_later, loop deleters, etc.
-        //
-        // Do not use this unless you know you need it.
-        //
-        // The interface is the same as `Loop::call` et al, but when this JobQueue is
-        // destroyed the Loop can live on.  The purpose of this is if you have multiple
-        // components using the same Loop and one of those components may have jobs queued
-        // which reference it *after* its destructor, that component can instead own this
-        // JobQueue and those jobs will not be processed, but anything else using the Loop
-        // will be unaffected.
-        //
-        // The owner of this JobQueue is responsible for making sure that the JobQueue is
-        // deleted on the loop thread.  The easiest way to do this is to make sure the owning
-        // object is deleted on the loop thread.
-        //
-        // If you keep objects alive which you created with this queue, e.g. tickers, wakeables,
-        // etc. you are responsible for making sure any concrete references to them (especially
-        // shared_ptr) are gone before the JobQueue is.  Their destructors are (necessarily and
-        // intentionally) jobs on the job queue from which they spawned.
-        std::unique_ptr<JobQueue> make_job_queue();
-
         bool inside() const { return std::this_thread::get_id() == loop_thread_id; }
 
         // FIXME: this *may* be superfluous with the addition of JobQueue, but since it's
         //        public I'm not sure if we've used it outside this class...
         // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
         template <typename T, std::invocable<T*> Callable>
-        auto wrapped_deleter(Callable f)
+        auto wrapped_deleter(Callable&& f)
         {
-            return main_queue->wrapped_deleter<T>(std::move(f));
+            return main_queue.wrapped_deleter<T>(std::forward<Callable>(f));
         }
 
         // Similar in concept to std::make_shared<T>, but it creates the shared pointer with a
@@ -337,7 +346,7 @@ namespace oxen::quic
         template <typename T, typename... Args>
         std::shared_ptr<T> make_shared(Args&&... args)
         {
-            return main_queue->make_shared<T>(std::forward<decltype(args)>(args)...);
+            return main_queue.make_shared<T>(std::forward<Args>(args)...);
         }
 
         // Similar to the above make_shared, but instead of forwarding arguments for the
@@ -346,7 +355,7 @@ namespace oxen::quic
         template <typename T, std::invocable<T*> Callable>
         std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
         {
-            return main_queue->shared_ptr<T>(obj, std::move(deleter));
+            return main_queue.shared_ptr<T>(obj, std::forward<Callable>(deleter));
         }
 
         /// Calls `f()` on the event loop.  If the caller is already in the event loop thread then
@@ -355,7 +364,7 @@ namespace oxen::quic
         template <std::invocable<> Callable>
         void call(Callable&& f)
         {
-            return main_queue->call(std::move(f));
+            main_queue.call(std::forward<Callable>(f));
         }
 
         // Calls `f()` on the event loop and returns its value.  If this is called from within the
@@ -366,7 +375,7 @@ namespace oxen::quic
         template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
         Ret call_get(Callable&& f)
         {
-            return main_queue->call_get(std::move(f));
+            return main_queue.call_get(std::forward<Callable>(f));
         }
 
         /// Sets up a task `f()` to be called on the event loop periodically.
@@ -385,14 +394,14 @@ namespace oxen::quic
         [[nodiscard]] std::shared_ptr<Ticker> call_every(
                 std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
         {
-            return main_queue->call_every(interval, std::move(f), start_immediately);
+            return main_queue.call_every(interval, std::forward<Callable>(f), start_immediately);
         }
 
         /// Schedules a call of `f()` on the event loop after a delay.
         template <std::invocable<> Callable>
-        void call_later(std::chrono::microseconds delay, Callable hook)
+        void call_later(std::chrono::microseconds delay, Callable&& hook)
         {
-            main_queue->call_later(delay, std::move(hook));
+            main_queue.call_later(delay, std::forward<Callable>(hook));
         }
 
         /// Creates a Wakeable event tied to this event loop that can be manually triggered when
@@ -401,16 +410,16 @@ namespace oxen::quic
         /// that this call only constructs the event, but does not initially schedule it.
         std::shared_ptr<Wakeable> make_wakeable(std::function<void()> hook)
         {
-            return main_queue->make_wakeable(std::move(hook));
+            return main_queue.make_wakeable(std::move(hook));
         }
 
         /// Schedules a call of `f()` at the next available opportunity on the event loop.  Unlike
         /// `call()`, `call_soon()` never calls f() immediately even if already inside the event
         /// loop.
         template <std::invocable<> Callable>
-        void call_soon(Callable f)
+        void call_soon(Callable&& f)
         {
-            main_queue->call_soon(std::move(f));
+            main_queue.call_soon(std::forward<Callable>(f));
         }
 
         /// Takes any type of shared_ptr and schedules a reset of that shared pointer on the event

@@ -99,9 +99,7 @@ namespace oxen::quic
         return ev_methods_avail;
     }
 
-    Loop::Loop() : ev_loop{nullptr, ::event_base_free}
-    {
-        log::trace(log_cat, "Beginning loop context creation with new ev loop thread");
+    static ::event_base* make_ev_loop() {
 
 #ifdef _WIN32
         {
@@ -139,14 +137,14 @@ namespace oxen::quic
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_NO_CACHE_TIME);
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST);
 
-        ev_loop = {event_base_new_with_config(ev_conf.get()), event_base_free};
+        auto ev_loop = event_base_new_with_config(ev_conf.get());
+        log::debug(log_cat, "Started libevent loop with backend {}", event_base_get_method(ev_loop));
+        return ev_loop;
+    }
 
-        log::debug(log_cat, "Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
-
+    Loop::Loop() : ev_loop{make_ev_loop(), ::event_base_free}
+    {
         std::promise<void> p;
-
-        main_queue = create_job_queue();
-
         loop_thread = std::thread{[this, &p] {
             log::debug(log_cat, "Starting event loop run");
             p.set_value();
@@ -158,11 +156,6 @@ namespace oxen::quic
         p.get_future().get();
 
         log::info(log_cat, "libevent loop is started");
-    }
-
-    std::unique_ptr<JobQueue> Loop::make_job_queue()
-    {
-        return main_queue->call_get([this]() { return create_job_queue(); });
     }
 
     struct JobQueue::OneShotDelayed
@@ -178,13 +171,27 @@ namespace oxen::quic
         setup_job_waker();
     }
 
-    JobQueue::~JobQueue()
+    JobQueue::~JobQueue() {
+        log::debug(log_cat, "Destryoing job queue.");
+        if (job_waker)
+            stop();
+    }
+
+    void JobQueue::stop()
     {
-        log::debug(log_cat, "Destroying loop job queue.");
+        // Synchronization point: if we aren't on the loop, recurse into it:
+        if (!loop.inside()) {
+            loop.call_get([this] { stop(); });
+            return;
+        }
+
+        if (!job_waker)
+            return;
+
+        log::debug(log_cat, "Stopping/cancelling job queue events");
         *running = false;
 
-        [[maybe_unused]] auto res = event_del(job_waker.get());
-        assert(res == 0);
+        job_waker.reset();
 
         for (auto& t : tickers)
         {
@@ -204,9 +211,10 @@ namespace oxen::quic
     {
         log::debug(log_cat, "Shutting down loop...");
 
-        // JobQueue has a canary such that if it's processing jobs as it is destroyed
-        // it should be safe, but we *do* want to stop/destroy it on the loop thread.
-        main_queue->call_get([this]() { main_queue.reset(); });
+        // JobQueue has a canary such that if it's processing jobs as it is destroyed it should be
+        // safe, but we *do* want to stop/destroy it before general member destruction (and on the
+        // loop thread, implemented by stop() itself).
+        main_queue.stop();
 
         event_base_loopbreak(ev_loop.get());
         loop_thread.join();

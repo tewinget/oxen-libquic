@@ -19,7 +19,7 @@ namespace oxen::quic::test
         SECTION("Extra queue jobs go away, others do not.")
         {
             Loop loop;
-            auto jq = loop.make_job_queue();
+            JobQueue jq{loop};
 
             callback_waiter queued{[]() {}};
             callback_waiter good{[]() {}};
@@ -35,11 +35,11 @@ namespace oxen::quic::test
             //
             // the third should not execute
             loop.call([&]() {
-                jq->call_soon([&]() { good.call(); });
+                jq.call_soon([&]() { good.call(); });
 
-                jq->call_soon([&]() { jq.reset(); });
+                jq.call_soon([&]() { jq.stop(); });
 
-                jq->call_soon([&]() { bad.call(); });
+                jq.call_soon([&]() { bad.call(); });
 
                 // call_soon so it gets queued, as it is being called from inside the loop.
                 loop.call_soon([&]() { main_ok.call(); });
@@ -57,7 +57,7 @@ namespace oxen::quic::test
         SECTION("Tickers stop when their JobQueue dies")
         {
             Loop loop;
-            auto jq = loop.make_job_queue();
+            JobQueue jq{loop};
 
             callback_waiter queued{[]() {}};
 
@@ -68,14 +68,14 @@ namespace oxen::quic::test
 
             // increment each counter every interval
             loop.call([&]() {
-                bad = jq->call_every(1ms, [&]() { bad_count++; });
+                bad = jq.call_every(1ms, [&]() { bad_count++; });
                 good = loop.call_every(1ms, [&]() { good_count++; });
 
                 loop.call_later(20ms, [&]() {
                     // our ticker references must expire before the job queue does
                     bad.reset();
 
-                    jq.reset();
+                    jq.stop();
                 });
 
                 queued.call();
