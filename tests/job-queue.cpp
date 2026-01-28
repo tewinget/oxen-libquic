@@ -56,8 +56,6 @@ namespace oxen::quic::test
 
         SECTION("call_get exception if JobQueue goes away before fulfilled")
         {
-            bool foo{false};
-
             jq.call([&]() {
                 // this needs to happen after the call_get below is queued.  hopefully there
                 // won't be some fruit-flavored platform where this sleep is insufficient.
@@ -65,16 +63,7 @@ namespace oxen::quic::test
                 jq.stop();
             });
 
-            try
-            {
-                foo = jq.call_get([&]() { return true; });
-            }
-            catch (std::future_error& e)
-            {
-                // this is the expected case
-            }
-
-            REQUIRE_FALSE(foo);
+            REQUIRE_THROWS_AS(jq.call_get([&]() {}), std::future_error);
         }
     }
 
