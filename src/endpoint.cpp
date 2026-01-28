@@ -378,9 +378,9 @@ namespace oxen::quic
         if (!msg)
             msg = ec.strerror();
         job_queue.call_soon([wself = weak_from_this(),
-                        connid = conn.reference_id(),
-                        ec = std::move(ec),
-                        msg = std::move(*msg)]() mutable {
+                             connid = conn.reference_id(),
+                             ec = std::move(ec),
+                             msg = std::move(*msg)]() mutable {
             if (auto self = wself.lock())
                 if (auto it = self->conns.find(connid); it != self->conns.end() && it->second)
                     self->_close_connection(*it->second, std::move(ec), std::move(msg));

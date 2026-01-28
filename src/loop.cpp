@@ -96,7 +96,8 @@ namespace oxen::quic
         return ev_methods_avail;
     }
 
-    static ::event_base* make_ev_loop() {
+    static ::event_base* make_ev_loop()
+    {
 
 #ifdef _WIN32
         {
@@ -175,7 +176,8 @@ namespace oxen::quic
         setup_job_waker();
     }
 
-    JobQueue::~JobQueue() {
+    JobQueue::~JobQueue()
+    {
         log::debug(log_cat, "Destryoing job queue.");
         if (job_waker)
             stop();
@@ -184,7 +186,8 @@ namespace oxen::quic
     void JobQueue::stop()
     {
         // Synchronization point: if we aren't on the loop, recurse into it:
-        if (!loop.inside()) {
+        if (!loop.inside())
+        {
             loop.call_get([this] { stop(); });
             return;
         }
