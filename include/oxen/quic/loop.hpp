@@ -76,7 +76,7 @@ namespace oxen::quic
     //
     // Do not use this unless you know you need it.
     //
-    // The interface is the same as `Loop::call` et al, but a JobQueue can have a shorter lifetime
+    // The interface is the same as `Loop::call` and similar, but a JobQueue can have a shorter lifetime
     // than the Loop on which it runs.  The purpose of this is if you have multiple components using
     // the same Loop and one of those components may have jobs queued which reference it *after* its
     // destructor, that component can instead own this JobQueue and those jobs will not be
@@ -330,8 +330,6 @@ namespace oxen::quic
 
         bool inside() const { return std::this_thread::get_id() == loop_thread_id; }
 
-        // FIXME: this *may* be superfluous with the addition of JobQueue, but since it's
-        //        public I'm not sure if we've used it outside this class...
         // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
         template <typename T, std::invocable<T*> Callable>
         auto wrapped_deleter(Callable&& f)
