@@ -214,15 +214,12 @@ namespace oxen::quic
 #endif
     }
 
-    std::shared_ptr<Ticker> JobQueue::make_ticker()
+    std::shared_ptr<Ticker> Loop::make_ticker()
     {
-        if (!running)
-            return nullptr;
-
         return make_shared<Ticker>();
     }
 
-    std::shared_ptr<Wakeable> JobQueue::make_wakeable(std::function<void()> callback)
+    std::shared_ptr<Wakeable> Loop::make_wakeable(std::function<void()> callback)
     {
         if (!callback)
         {
@@ -234,7 +231,7 @@ namespace oxen::quic
         auto w = make_shared<Wakeable>();
         w->f = std::move(callback);
         w->ev.reset(event_new(
-                loop.ev_loop.get(),
+                ev_loop.get(),
                 -1,
                 0,
                 [](evutil_socket_t, short, void* w) {
@@ -317,11 +314,6 @@ namespace oxen::quic
     bool JobQueue::inside() const
     {
         return loop.inside();
-    }
-
-    ::event_base* JobQueue::get_event_base() const
-    {
-        return loop.get_event_base();
     }
 
     // Wrapper around event_active so that we can keep libevent out of the public headers.

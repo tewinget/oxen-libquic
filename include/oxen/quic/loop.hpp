@@ -105,8 +105,6 @@ namespace oxen::quic
 
         void add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook);
 
-        std::shared_ptr<Ticker> make_ticker();
-
         // call_later events aren't guaranteed to get properly disposed off if the event loop stops
         // before it fires, so we stash it in here temporarily and remove it when fired.  During the
         // Loop destructor, then, if there's anything left that's one that needs to be cleaned up.
@@ -117,8 +115,6 @@ namespace oxen::quic
         void process_job_queue();
 
         bool inside() const;
-
-        ::event_base* get_event_base() const;
 
       public:
         JobQueue(Loop& l);
@@ -225,27 +221,6 @@ namespace oxen::quic
             return fut.get();
         }
 
-        /// Sets up a task `f()` to be called on the event loop periodically.
-        ///
-        /// `interval` controls the interval on which the task will be called.
-        ///
-        /// `start_immediately` controls whether the task is scheduled on the event loop right away
-        /// (true, the default), or not (false).  If not started immediately then the task will not
-        /// fire until `start()` is called on it.  (Note that this parameter does not mean "call
-        /// immediately" -- it simply controls whether the initial timer for the first call is
-        /// started or not).
-        ///
-        /// The owner of the Ticker is responsible for making sure it does not outlive the Loop
-        /// from which it was created.
-        template <std::invocable<> Callable>
-        [[nodiscard]] std::shared_ptr<Ticker> call_every(
-                std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
-        {
-            auto h = make_ticker();
-            h->init_event(get_event_base(), interval, std::forward<Callable>(f), start_immediately);
-            return h;
-        }
-
         /// Schedules a call of `f()` on the event loop after a delay.
         template <std::invocable<> Callable>
         void call_later(std::chrono::microseconds delay, Callable hook)
@@ -267,12 +242,6 @@ namespace oxen::quic
                 });
             }
         }
-
-        /// Creates a Wakeable event tied to this event loop that can be manually triggered when
-        /// desired to schedule an invocation of the callback.  Unlike call_soon, this is idempotent
-        /// (i.e. multiple wakeups before it actually runs does not schedule multiple calls).  Note
-        /// that this call only constructs the event, but does not initially schedule it.
-        std::shared_ptr<Wakeable> make_wakeable(std::function<void()> hook);
 
         static void activate(::event& evt);
 
@@ -310,6 +279,8 @@ namespace oxen::quic
 
       private:
         JobQueue main_queue{*this};
+
+        std::shared_ptr<Ticker> make_ticker();
 
       public:
         Loop();
@@ -381,13 +352,15 @@ namespace oxen::quic
         /// immediately" -- it simply controls whether the initial timer for the first call is
         /// started or not).
         ///
-        /// The ticker will remain active as long the loop remains active and the returned Ticker
-        /// object is kept alive.
+        /// The owner of the Ticker is responsible for making sure it does not outlive the Loop
+        /// from which it was created.
         template <std::invocable<> Callable>
         [[nodiscard]] std::shared_ptr<Ticker> call_every(
                 std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
         {
-            return main_queue.call_every(interval, std::forward<Callable>(f), start_immediately);
+            auto h = make_ticker();
+            h->init_event(get_event_base(), interval, std::forward<Callable>(f), start_immediately);
+            return h;
         }
 
         /// Schedules a call of `f()` on the event loop after a delay.
@@ -401,10 +374,7 @@ namespace oxen::quic
         /// desired to schedule an invocation of the callback.  Unlike call_soon, this is idempotent
         /// (i.e. multiple wakeups before it actually runs does not schedule multiple calls).  Note
         /// that this call only constructs the event, but does not initially schedule it.
-        std::shared_ptr<Wakeable> make_wakeable(std::function<void()> hook)
-        {
-            return main_queue.make_wakeable(std::move(hook));
-        }
+        std::shared_ptr<Wakeable> make_wakeable(std::function<void()> hook);
 
         /// Schedules a call of `f()` at the next available opportunity on the event loop.  Unlike
         /// `call()`, `call_soon()` never calls f() immediately even if already inside the event

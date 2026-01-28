@@ -53,40 +53,6 @@ namespace oxen::quic::test
             REQUIRE_FALSE(bad.wait(10ms));
             REQUIRE(main_ok.wait(10ms));
         }
-
-        SECTION("Tickers stop when their JobQueue dies")
-        {
-            Loop loop;
-            JobQueue jq{loop};
-
-            callback_waiter queued{[]() {}};
-
-            std::atomic<int> bad_count = 0;
-            std::atomic<int> good_count = 0;
-            std::shared_ptr<Ticker> bad;
-            std::shared_ptr<Ticker> good;
-
-            // increment each counter every interval
-            loop.call([&]() {
-                bad = jq.call_every(1ms, [&]() { bad_count++; });
-                good = loop.call_every(1ms, [&]() { good_count++; });
-
-                loop.call_later(20ms, [&]() {
-                    // our ticker references must expire before the job queue does
-                    bad.reset();
-
-                    jq.stop();
-                });
-
-                queued.call();
-            });
-
-            REQUIRE(queued.wait(10ms));
-            std::this_thread::sleep_for(40ms);
-
-            // allows for a bit of stupid timing, should be sufficient
-            REQUIRE(good_count > bad_count + 5);
-        }
     }
 
 }  // namespace oxen::quic::test
