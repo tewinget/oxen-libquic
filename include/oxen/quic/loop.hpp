@@ -25,12 +25,11 @@ namespace oxen::quic
         event_ptr ev;
         timeval interval;
         std::function<void()> f;
-        std::shared_ptr<bool> alive;
 
         void init_event(
                 ::event_base* loop, std::chrono::microseconds _t, std::function<void()> task, bool start_immediately = true);
 
-        Ticker(std::shared_ptr<bool> keepalive) : alive{keepalive} {}
+        Ticker() = default;
 
       public:
         /** Starts the repeating event on the given interval on Ticker creation.  Does nothing if
@@ -63,9 +62,8 @@ namespace oxen::quic
 
         event_ptr ev;
         std::function<void()> f;
-        std::shared_ptr<bool> alive;
 
-        Wakeable(std::shared_ptr<bool> keepalive) : alive{keepalive} {}
+        Wakeable() = default;
 
       public:
         /// Call to schedule f() to be called, if not already scheduled.
@@ -106,9 +104,6 @@ namespace oxen::quic
         Loop& loop;
 
         void add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook);
-
-        std::list<std::weak_ptr<Ticker>> tickers;
-        std::list<std::weak_ptr<Wakeable>> wakeables;
 
         std::shared_ptr<Ticker> make_ticker();
 
@@ -240,8 +235,8 @@ namespace oxen::quic
         /// immediately" -- it simply controls whether the initial timer for the first call is
         /// started or not).
         ///
-        /// The ticker will remain active as long the loop remains active and the returned Ticker
-        /// object is kept alive.
+        /// The owner of the Ticker is responsible for making sure it does not outlive the Loop
+        /// from which it was created.
         template <std::invocable<> Callable>
         [[nodiscard]] std::shared_ptr<Ticker> call_every(
                 std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)

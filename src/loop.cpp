@@ -46,9 +46,6 @@ namespace oxen::quic
 
     bool Ticker::stop()
     {
-        if (!alive)
-            return true;
-
         if (ev && event_del(ev.get()) != 0)
         {
             log::warning(log_cat, "EventHandler failed to pause repeating event!");
@@ -88,7 +85,7 @@ namespace oxen::quic
                 this));
 
         if (start_immediately and not start())
-            log::warning(log_cat, "Failed to immediately start one-off event!");
+            log::warning(log_cat, "Failed to immediately start repeating event!");
     }
 
     static std::vector<std::string_view> get_ev_methods()
@@ -193,15 +190,6 @@ namespace oxen::quic
 
         job_waker.reset();
 
-        for (auto& t : tickers)
-        {
-            if (auto tick = t.lock())
-            {
-                tick->f = nullptr;
-                tick->stop();
-            }
-        }
-
         for (auto* osd : delayed_events)
             delete osd;
         delayed_events.clear();
@@ -231,15 +219,19 @@ namespace oxen::quic
         if (!running)
             return nullptr;
 
-        std::erase_if(tickers, [](auto& wp) { return wp.expired(); });
-        auto t = make_shared<Ticker>(running);
-        tickers.emplace_back(t);
-        return t;
+        return make_shared<Ticker>();
     }
 
     std::shared_ptr<Wakeable> JobQueue::make_wakeable(std::function<void()> callback)
     {
-        auto w = make_shared<Wakeable>(running);
+        if (!callback)
+        {
+            // FIXME: should this throw/assert?
+            log::error(log_cat, "Not making Wakeable with empty callback.");
+            return nullptr;
+        }
+
+        auto w = make_shared<Wakeable>();
         w->f = std::move(callback);
         w->ev.reset(event_new(
                 loop.ev_loop.get(),
@@ -247,19 +239,14 @@ namespace oxen::quic
                 0,
                 [](evutil_socket_t, short, void* w) {
                     auto* wakeable = static_cast<Wakeable*>(w);
-                    if (wakeable->f)
-                        wakeable->f();
+                    wakeable->f();
                 },
                 w.get()));
-        wakeables.emplace_back(w);
         return w;
     }
 
     void Wakeable::wake()
     {
-        if (!ev || !alive)
-            return;
-
         event_active(ev.get(), 0, 0);
     }
 
