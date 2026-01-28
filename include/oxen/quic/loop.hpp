@@ -114,9 +114,9 @@ namespace oxen::quic
         void setup_job_waker();
         void process_job_queue();
 
+      public:
         bool inside() const;
 
-      public:
         JobQueue(Loop& l);
 
         // Cancels all jobs in the queue and deletes this job queue's event from the event loop.

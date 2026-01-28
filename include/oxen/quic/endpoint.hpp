@@ -50,6 +50,7 @@ namespace oxen::quic
         connection_closed_callback connection_close_cb;
 
         Loop& loop;
+        JobQueue job_queue{loop};
 
         template <typename... Opt>
         void listen(Opt&&... opts)
@@ -58,7 +59,7 @@ namespace oxen::quic
                     (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<TLSCreds>>) == 1,
                     "listen() requires exactly one std::shared_ptr<TLSCreds> argument");
 
-            loop.call_get([&opts..., this]() {
+            job_queue.call_get([&opts..., this]() {
                 if (inbound_ctx)
                     throw std::logic_error{"Cannot call listen() more than once"};
 
@@ -82,7 +83,7 @@ namespace oxen::quic
             if (_local.is_ipv6() && !remote.is_ipv6())
                 remote.map_ipv4_as_ipv6();
 
-            return loop.call_get([this, &opts..., remote = std::move(remote)]() mutable {
+            return job_queue.call_get([this, &opts..., remote = std::move(remote)]() mutable {
                 // initialize client context and client tls context simultaneously
                 auto outbound_ctx = std::make_shared<IOContext>(Direction::OUTBOUND, std::forward<Opt>(opts)...);
                 _assign_context_globals(*outbound_ctx);

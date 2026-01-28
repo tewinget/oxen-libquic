@@ -126,7 +126,7 @@ namespace oxen::quic
             // has a forward declaration; the user of this method needs to have the full definition
             // available to call this.
             return std::static_pointer_cast<StreamT>(queue_incoming_stream_impl([&](Connection& c, EndpointDeferred& e) {
-                return e.loop.template make_shared<StreamT>(c, e, std::forward<Args>(args)...);
+                return e.job_queue.template make_shared<StreamT>(c, e, std::forward<Args>(args)...);
             }));
         }
 
@@ -148,7 +148,7 @@ namespace oxen::quic
         std::shared_ptr<StreamT> open_stream(Args&&... args)
         {
             return std::static_pointer_cast<StreamT>(open_stream_impl([&](Connection& c, EndpointDeferred& e) {
-                return e.loop.template make_shared<StreamT>(c, e, std::forward<Args>(args)...);
+                return e.job_queue.template make_shared<StreamT>(c, e, std::forward<Args>(args)...);
             }));
         }
 
