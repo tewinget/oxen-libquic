@@ -16,11 +16,11 @@ namespace oxen::quic::test
 
     TEST_CASE("JobQueue - One extra queue", "[jobqueue]")
     {
+        Loop loop;
+        JobQueue jq{loop};
+
         SECTION("Extra queue jobs go away, others do not.")
         {
-            Loop loop;
-            JobQueue jq{loop};
-
             callback_waiter queued{[]() {}};
             callback_waiter good{[]() {}};
             callback_waiter bad{[]() {}};
@@ -52,6 +52,29 @@ namespace oxen::quic::test
             REQUIRE(good.wait(10ms));
             REQUIRE_FALSE(bad.wait(10ms));
             REQUIRE(main_ok.wait(10ms));
+        }
+
+        SECTION("call_get exception if JobQueue goes away before fulfilled")
+        {
+            bool foo{false};
+
+            jq.call([&]() {
+                // this needs to happen after the call_get below is queued.  hopefully there
+                // won't be some fruit-flavored platform where this sleep is insufficient.
+                std::this_thread::sleep_for(10ms);
+                jq.stop();
+            });
+
+            try
+            {
+                foo = jq.call_get([&]() { return true; });
+            }
+            catch (std::future_error& e)
+            {
+                // this is the expected case
+            }
+
+            REQUIRE_FALSE(foo);
         }
     }
 

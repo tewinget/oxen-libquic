@@ -195,25 +195,34 @@ namespace oxen::quic
                 return f();
             }
 
-            std::promise<Ret> prom;
-            auto fut = prom.get_future();
+            struct CallGetter
+            {
+                std::shared_ptr<std::promise<Ret>> prom{std::make_shared<std::promise<Ret>>()};
+                Callable& f;
 
-            call_soon([&f, &prom] {
-                try
+                void operator()()
                 {
-                    if constexpr (!std::is_void_v<Ret>)
-                        prom.set_value(f());
-                    else
+                    try
                     {
-                        f();
-                        prom.set_value();
+                        if constexpr (!std::is_void_v<Ret>)
+                            prom->set_value(f());
+                        else
+                        {
+                            f();
+                            prom->set_value();
+                        }
+                    }
+                    catch (...)
+                    {
+                        prom->set_exception(std::current_exception());
                     }
                 }
-                catch (...)
-                {
-                    prom.set_exception(std::current_exception());
-                }
-            });
+            };
+
+            CallGetter g{.f = f};
+            auto fut = g.prom->get_future();
+
+            call_soon(std::move(g));
 
             return fut.get();
         }
