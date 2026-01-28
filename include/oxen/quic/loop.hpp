@@ -105,9 +105,9 @@ namespace oxen::quic
 
         void add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook);
 
-        // call_later events aren't guaranteed to get properly disposed off if the event loop stops
-        // before it fires, so we stash it in here temporarily and remove it when fired.  During the
-        // Loop destructor, then, if there's anything left that's one that needs to be cleaned up.
+        // call_later events aren't guaranteed to get properly disposed off if the job queue is
+        // destroyed before it fires, so we stash it in here temporarily and remove it when fired.
+        // During the JobQueue destructor, then any unfired events need to be cleaned up.
         struct OneShotDelayed;
         std::list<OneShotDelayed*> delayed_events;
 
@@ -132,15 +132,14 @@ namespace oxen::quic
         // Calls stop() if not already called.
         ~JobQueue();
 
-        // Returns a pointer deleter that defers the actual destruction call to this network
-        // object's event loop.
+        // Returns a pointer deleter that defers the actual destruction call to this JobQueue
         template <typename T>
         auto loop_deleter()
         {
             return [this](T* ptr) { call_get([ptr] { delete ptr; }); };
         }
 
-        // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
+        // Returns a pointer deleter that defers invocation of a custom deleter to this JobQueue
         template <typename T, std::invocable<T*> Callable>
         auto wrapped_deleter(Callable f)
         {
@@ -150,9 +149,8 @@ namespace oxen::quic
         }
 
         // Similar in concept to std::make_shared<T>, but it creates the shared pointer with a
-        // custom deleter that dispatches actual object destruction to the network's event loop for
-        // thread safety, and waits for destruction of the overlying object to complete before
-        // returning.
+        // custom deleter that dispatches actual object destruction to this JobQueue for thread
+        // safety, and waits for destruction of the overlying object to complete before returning.
         template <typename T, typename... Args>
         std::shared_ptr<T> make_shared(Args&&... args)
         {
@@ -169,9 +167,8 @@ namespace oxen::quic
             return std::shared_ptr<T>(obj, wrapped_deleter<T>(std::forward<Callable>(deleter)));
         }
 
-        /// Calls `f()` on the event loop.  If the caller is already in the event loop thread then
-        /// f() is called immediately; otherwise it is scheduled on the event loop thread at the
-        /// next available opportunity.
+        /// Calls `f()` on the JobQueue.  If the caller is already in the Loop thread then
+        /// f() is called immediately; otherwise it is scheduled at the end of the queue.
         template <std::invocable<> Callable>
         void call(Callable&& f)
         {
@@ -185,9 +182,9 @@ namespace oxen::quic
             }
         }
 
-        // Calls `f()` on the event loop and returns its value.  If this is called from within the
-        // event loop thread then this simply calls and returns the result of `f()`.  If *not* in
-        // the event loop then a call to `f()` is scheduled on the event loop for the next available
+        // Calls `f()` on the JobQueue and returns its value.  If this is called from within the
+        // Loop thread then this simply calls and returns the result of `f()`.  If *not* in
+        // the Loop thread then a call to `f()` is scheduled on the JobQueue for the next available
         // opportunity and then the current thread blocks until that call is invoked, then returns
         // it back to the caller.
         template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
@@ -221,7 +218,7 @@ namespace oxen::quic
             return fut.get();
         }
 
-        /// Schedules a call of `f()` on the event loop after a delay.
+        /// Schedules a call of `f()` on the JobQueue after a delay.
         template <std::invocable<> Callable>
         void call_later(std::chrono::microseconds delay, Callable hook)
         {
@@ -245,9 +242,9 @@ namespace oxen::quic
 
         static void activate(::event& evt);
 
-        /// Schedules a call of `f()` at the next available opportunity on the event loop.  Unlike
-        /// `call()`, `call_soon()` never calls f() immediately even if already inside the event
-        /// loop.
+        /// Schedules a call of `f()` at the next available opportunity on the JobQueue.  Unlike
+        /// `call()`, `call_soon()` never calls f() immediately even if already inside the Loop
+        /// thread.
         template <std::invocable<> Callable>
         void call_soon(Callable f)
         {
@@ -259,8 +256,8 @@ namespace oxen::quic
             activate(*job_waker);
         }
 
-        /// Takes any type of shared_ptr and schedules a reset of that shared pointer on the event
-        /// loop.  Asyncronous.
+        /// Takes any type of shared_ptr and schedules a reset of that shared pointer on the
+        /// JobQueue.  Asyncronous.
         template <typename T>
         void reset_soon(std::shared_ptr<T>&& ptr)
         {
@@ -296,46 +293,35 @@ namespace oxen::quic
 
         bool inside() const { return std::this_thread::get_id() == loop_thread_id; }
 
-        // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
+        // See JobQueue::wrapped_deleter, applies to Loop's main event queue.
         template <typename T, std::invocable<T*> Callable>
         auto wrapped_deleter(Callable&& f)
         {
             return main_queue.wrapped_deleter<T>(std::forward<Callable>(f));
         }
 
-        // Similar in concept to std::make_shared<T>, but it creates the shared pointer with a
-        // custom deleter that dispatches actual object destruction to the network's event loop for
-        // thread safety, and waits for destruction of the overlying object to complete before
-        // returning.
+        // See JobQueue::make_shared, applies to Loop's main event queue.
         template <typename T, typename... Args>
         std::shared_ptr<T> make_shared(Args&&... args)
         {
             return main_queue.make_shared<T>(std::forward<Args>(args)...);
         }
 
-        // Similar to the above make_shared, but instead of forwarding arguments for the
-        // construction of the object, it creates the shared_ptr from the already created object ptr
-        // and wraps the object's deleter in a wrapped_deleter
+        // See JobQueue::shared_ptr, applies to Loop's main event queue.
         template <typename T, std::invocable<T*> Callable>
         std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
         {
             return main_queue.shared_ptr<T>(obj, std::forward<Callable>(deleter));
         }
 
-        /// Calls `f()` on the event loop.  If the caller is already in the event loop thread then
-        /// f() is called immediately; otherwise it is scheduled on the event loop thread at the
-        /// next available opportunity.
+        // See JobQueue::call, applies to Loop's main event queue.
         template <std::invocable<> Callable>
         void call(Callable&& f)
         {
             main_queue.call(std::forward<Callable>(f));
         }
 
-        // Calls `f()` on the event loop and returns its value.  If this is called from within the
-        // event loop thread then this simply calls and returns the result of `f()`.  If *not* in
-        // the event loop then a call to `f()` is scheduled on the event loop for the next available
-        // opportunity and then the current thread blocks until that call is invoked, then returns
-        // it back to the caller.
+        // See JobQueue::call_get, applies to Loop's main event queue.
         template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
         Ret call_get(Callable&& f)
         {
@@ -363,7 +349,7 @@ namespace oxen::quic
             return h;
         }
 
-        /// Schedules a call of `f()` on the event loop after a delay.
+        // See JobQueue::call_later, applies to Loop's main event queue.
         template <std::invocable<> Callable>
         void call_later(std::chrono::microseconds delay, Callable&& hook)
         {
@@ -376,17 +362,14 @@ namespace oxen::quic
         /// that this call only constructs the event, but does not initially schedule it.
         std::shared_ptr<Wakeable> make_wakeable(std::function<void()> hook);
 
-        /// Schedules a call of `f()` at the next available opportunity on the event loop.  Unlike
-        /// `call()`, `call_soon()` never calls f() immediately even if already inside the event
-        /// loop.
+        // See JobQueue::call_soon, applies to Loop's main event queue.
         template <std::invocable<> Callable>
         void call_soon(Callable&& f)
         {
             main_queue.call_soon(std::forward<Callable>(f));
         }
 
-        /// Takes any type of shared_ptr and schedules a reset of that shared pointer on the event
-        /// loop.  Asyncronous.
+        // See JobQueue::reset_soon, applies to Loop's main event queue.
         template <typename T>
         void reset_soon(std::shared_ptr<T>&& ptr)
         {
