@@ -159,8 +159,15 @@ namespace oxen::quic
     {
         JobQueue& jq;
         std::function<void()> f;
+        event_ptr ev;
 
         OneShotDelayed(JobQueue& jq_, std::function<void()> f) : jq{jq_}, f{std::move(f)} {}
+
+        ~OneShotDelayed()
+        {
+            if (ev)
+                event_del(ev.get());
+        }
     };
 
     JobQueue::JobQueue(Loop& l) : loop{l}
@@ -269,10 +276,10 @@ namespace oxen::quic
         delayed_events.push_back(handler);
         auto& h = *handler;
         const auto delay_tv = loop_time_to_timeval(delay);
-        event_base_once(
+        h.ev.reset(event_new(
                 loop.get_event_base(),
                 -1,
-                EV_TIMEOUT,
+                0,
                 [](evutil_socket_t, short, void* e) mutable {
                     auto* h = static_cast<OneShotDelayed*>(e);
                     if (h->f)
@@ -282,8 +289,8 @@ namespace oxen::quic
                         de.erase(it);
                     delete h;
                 },
-                &h,
-                &delay_tv);
+                &h));
+        event_add(h.ev.get(), &delay_tv);
     }
 
     void JobQueue::process_job_queue()
