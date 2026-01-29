@@ -192,6 +192,7 @@ namespace oxen::quic
             return;
         }
 
+        std::lock_guard l{job_queue_mutex};
         if (!job_waker)
             return;
 
@@ -199,6 +200,9 @@ namespace oxen::quic
         *running = false;
 
         job_waker.reset();
+
+        // Why does std::queue not have a clear() method?
+        std::queue<Job>{}.swap(job_queue);
 
         for (auto* osd : delayed_events)
             delete osd;
@@ -275,6 +279,15 @@ namespace oxen::quic
 
     void JobQueue::add_oneshot_event(std::chrono::microseconds delay, std::function<void()> hook)
     {
+        // lock if not in loop thread, to make running check safe -- most uses of this should be
+        // from the loop thread, so this shouldn't be a bottleneck
+        std::unique_lock l{job_queue_mutex};
+        if (!inside())
+            l.lock();
+
+        if (!*running)
+            throw std::runtime_error{"Attempting to queue job onto stopped loop."};
+
         auto* handler = new OneShotDelayed{*this, std::move(hook)};
         delayed_events.push_back(handler);
         auto& h = *handler;

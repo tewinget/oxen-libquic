@@ -259,6 +259,8 @@ namespace oxen::quic
         {
             {
                 std::lock_guard lock{job_queue_mutex};
+                if (!*running)
+                    throw std::runtime_error{"Attempting to queue job onto stopped loop."};
                 job_queue.emplace(std::move(f));
             }
 

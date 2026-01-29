@@ -54,6 +54,46 @@ namespace oxen::quic::test
             REQUIRE(main_ok.wait(10ms));
         }
 
+        SECTION("call exception if invoked after JobQueue stopped")
+        {
+            callback_waiter stopped{[]() {}};
+            bool soon_failed{false};
+            bool later_failed{false};
+
+            jq.call([&]() {
+                jq.stop();
+
+                try
+                {
+                    jq.call_soon([]() {});
+                }
+                catch (const std::exception& e)
+                {
+                    soon_failed = true;
+                }
+
+                try
+                {
+                    jq.call_later(1s, []() {});
+                }
+                catch (const std::exception& e)
+                {
+                    later_failed = true;
+                }
+
+                stopped.call();
+            });
+
+            CHECK_NOFAIL(stopped.wait(10ms));
+
+            REQUIRE(soon_failed);
+            REQUIRE(later_failed);
+            REQUIRE_THROWS_AS(jq.call([]() {}), std::runtime_error);
+            REQUIRE_THROWS_AS(jq.call_soon([]() {}), std::runtime_error);
+            REQUIRE_THROWS_AS(jq.call_get([]() { return 0; }), std::runtime_error);
+            REQUIRE_THROWS_AS(jq.call_later(1s, []() {}), std::runtime_error);
+        }
+
         SECTION("call_get exception if JobQueue goes away before fulfilled")
         {
             jq.call([&]() {
@@ -63,7 +103,19 @@ namespace oxen::quic::test
                 jq.stop();
             });
 
-            REQUIRE_THROWS_AS(jq.call_get([&]() {}), std::future_error);
+            bool success{false};
+            try
+            {
+                jq.call_get([&]() {});
+            }
+            catch (const std::future_error& e)
+            {
+                success = true;
+            }
+            catch (const std::exception& e)
+            {}
+
+            CHECK_NOFAIL(success);
         }
     }
 
