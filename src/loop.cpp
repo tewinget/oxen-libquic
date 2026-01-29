@@ -281,7 +281,7 @@ namespace oxen::quic
     {
         // lock if not in loop thread, to make running check safe -- most uses of this should be
         // from the loop thread, so this shouldn't be a bottleneck
-        std::unique_lock l{job_queue_mutex};
+        std::unique_lock l{job_queue_mutex, std::defer_lock};
         if (!inside())
             l.lock();
 
