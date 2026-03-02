@@ -478,7 +478,7 @@ namespace oxen::quic
 
     void Connection::set_new_path(Path new_path)
     {
-        _loop.call([this, new_path]() { _path = new_path; });
+        _endpoint.job_queue.call([this, new_path]() { _path = new_path; });
     }
 
     int Connection::recv_token(const uint8_t* token, size_t tokenlen)
@@ -588,12 +588,12 @@ namespace oxen::quic
 
     void Connection::set_remote_addr(const ngtcp2_addr& new_remote)
     {
-        _loop.call([this, new_remote]() { _path.set_new_remote(new_remote); });
+        _endpoint.job_queue.call([this, new_remote]() { _path.set_new_remote(new_remote); });
     }
 
     void Connection::set_local_addr(Address new_local)
     {
-        _loop.call([this, new_local]() {
+        _endpoint.job_queue.call([this, new_local]() {
             Path new_path{new_local, _path.remote};
             _path = new_path;
         });
@@ -629,7 +629,7 @@ namespace oxen::quic
     void Connection::halt_events()
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
-        assert(_loop.inside());
+        assert(_endpoint.job_queue.inside());
         packet_io_trigger.reset();
         packet_retransmit_timer.reset();
         log::debug(log_cat, "Connection ({}) io trigger/retransmit timer events halted", reference_id());
@@ -637,7 +637,7 @@ namespace oxen::quic
 
     void Connection::packet_io_ready()
     {
-        assert(_loop.inside());
+        assert(_endpoint.job_queue.inside());
         if (packet_io_trigger)
             event_active(packet_io_trigger.get(), 0, 0);
         // else we've reset the trigger (via halt_events), which means the connection is closing/draining/etc.
@@ -650,12 +650,12 @@ namespace oxen::quic
 
     std::shared_ptr<Datagrams> Connection::datagrams()
     {
-        return _loop.call_get([this] { return dgrams; });
+        return _endpoint.job_queue.call_get([this] { return dgrams; });
     }
 
     void Connection::revert_early_channels()
     {
-        assert(_loop.inside());
+        assert(_endpoint.job_queue.inside());
         log::debug(log_cat, "Client reverting early stream data");
 
         // We need to re-open any opened streams because the remote rejected early data, and when
@@ -734,7 +734,7 @@ namespace oxen::quic
                 break;
             case NGTCP2_ERR_DRAINING:
                 log::trace(log_cat, "Note: {} is draining; signaling endpoint to drain connection", reference_id());
-                _loop.call_soon([wself = weak_from_this()]() {
+                _endpoint.job_queue.call_soon([wself = weak_from_this()]() {
                     if (auto self = wself.lock())
                     {
                         log::debug(log_cat, "Endpoint draining connection {}", self->reference_id());
@@ -819,7 +819,7 @@ namespace oxen::quic
         if (!stream && default_stream)
             stream = default_stream(*this, _endpoint);
         if (!stream)
-            stream = _loop.make_shared<Stream>(
+            stream = _endpoint.job_queue.make_shared<Stream>(
                     *this, _endpoint, context->stream_data_cb, context->stream_close_cb, context->stream_fin_cb);
 
         return stream;
@@ -828,7 +828,7 @@ namespace oxen::quic
     std::shared_ptr<Stream> Connection::queue_incoming_stream_impl(
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
-        return _loop.call_get([this, &make_stream]() {
+        return _endpoint.job_queue.call_get([this, &make_stream]() {
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
@@ -870,7 +870,7 @@ namespace oxen::quic
     std::shared_ptr<Stream> Connection::open_stream_impl(
             std::function<std::shared_ptr<Stream>(Connection& c, Endpoint& e)> make_stream)
     {
-        return _loop.call_get([this, &make_stream]() {
+        return _endpoint.job_queue.call_get([this, &make_stream]() {
             std::shared_ptr<Stream> stream;
             if (make_stream)
                 stream = make_stream(*this, _endpoint);
@@ -918,7 +918,7 @@ namespace oxen::quic
 
     std::shared_ptr<Stream> Connection::get_stream_impl(int64_t id)
     {
-        return _loop.call_get([this, id]() -> std::shared_ptr<Stream> {
+        return _endpoint.job_queue.call_get([this, id]() -> std::shared_ptr<Stream> {
             if (auto it = _streams.find(id); it != _streams.end())
                 return it->second;
 
@@ -1404,7 +1404,7 @@ namespace oxen::quic
         if (uint64_t app_err_code = context->stream_open_cb ? context->stream_open_cb(*stream) : 0; app_err_code != 0)
         {
             log::info(log_cat, "stream_open_callback returned error code {}, closing stream {}", app_err_code, id);
-            assert(_loop.inside());
+            assert(_endpoint.job_queue.inside());
             stream->close(app_err_code);
             return 0;
         }
@@ -1666,7 +1666,7 @@ namespace oxen::quic
 
     std::string_view Connection::selected_alpn() const
     {
-        return _loop.call_get(
+        return _endpoint.job_queue.call_get(
                 [this]() { return (handshaked or establish_hook_called) ? get_session()->selected_alpn() : ""sv; });
     }
 
@@ -1708,7 +1708,7 @@ namespace oxen::quic
     {
         if (!_max_dgram_size_changed)
             return std::nullopt;
-        return _loop.call_get([this]() -> std::optional<size_t> {
+        return _endpoint.job_queue.call_get([this]() -> std::optional<size_t> {
             // Check it again via an exchange, in case someone raced us here
             if (_max_dgram_size_changed.exchange(false))
                 return _last_max_dgram_piece * (_packet_splitting ? 2 : 1);
@@ -1858,12 +1858,12 @@ namespace oxen::quic
                                : nullptr;
 
         if (context->config.datagram_support)
-            dgrams = _loop.make_shared<Datagrams>(
+            dgrams = _endpoint.job_queue.make_shared<Datagrams>(
                     *this,
                     _endpoint,
                     context->dgram_data_cb ? context->dgram_data_cb : ep.dgram_recv_cb,
                     context->config.dgram_queue_limit);
-        pseudo_stream = _loop.make_shared<Stream>(*this, _endpoint);
+        pseudo_stream = _endpoint.job_queue.make_shared<Stream>(*this, _endpoint);
         pseudo_stream->_stream_id = -1;
 
         const auto d_str = is_outbound() ? "outbound" : "inbound";
@@ -2084,35 +2084,35 @@ namespace oxen::quic
 
     size_t Connection::num_streams_active() const
     {
-        return _loop.call_get([this] { return _streams.size(); });
+        return _endpoint.job_queue.call_get([this] { return _streams.size(); });
     }
     size_t Connection::num_streams_pending() const
     {
-        return _loop.call_get([this] { return pending_streams.size(); });
+        return _endpoint.job_queue.call_get([this] { return pending_streams.size(); });
     }
     uint64_t Connection::get_max_streams() const
     {
-        return _loop.call_get([this] { return _max_streams; });
+        return _endpoint.job_queue.call_get([this] { return _max_streams; });
     }
     uint64_t Connection::get_streams_available() const
     {
-        return _loop.call_get([this] { return ngtcp2_conn_get_streams_bidi_left(*this); });
+        return _endpoint.job_queue.call_get([this] { return ngtcp2_conn_get_streams_bidi_left(*this); });
     }
     Path Connection::path() const
     {
-        return _loop.call_get([this] { return _path; });
+        return _endpoint.job_queue.call_get([this] { return _path; });
     }
     Address Connection::local() const
     {
-        return _loop.call_get([this] { return _path.local; });
+        return _endpoint.job_queue.call_get([this] { return _path.local; });
     }
     Address Connection::remote() const
     {
-        return _loop.call_get([this] { return _path.remote; });
+        return _endpoint.job_queue.call_get([this] { return _path.remote; });
     }
     size_t Connection::get_max_datagram_size() const
     {
-        return _loop.call_get([this] { return get_max_datagram_piece() * (_packet_splitting ? 2 : 1); });
+        return _endpoint.job_queue.call_get([this] { return get_max_datagram_piece() * (_packet_splitting ? 2 : 1); });
     }
 
     Connection::~Connection()

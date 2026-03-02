@@ -51,6 +51,7 @@ if(LIBQUIC_BUILD_TESTS)
         014-0rtt.cpp
         015-bt-encoding.cpp
         016-stateless_reset.cpp
+        job-queue.cpp
 
         case_logger.cpp
     )

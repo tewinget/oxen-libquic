@@ -51,19 +51,19 @@ namespace oxen::quic
 
     void Datagrams::set_split_datagram_lookahead(int n)
     {
-        loop.call([this, val = n >= 0 ? static_cast<size_t>(n) : dgram::queue::DEFAULT_SPLIT_LOOKAHEAD] {
+        endpoint.job_queue.call([this, val = n >= 0 ? static_cast<size_t>(n) : dgram::queue::DEFAULT_SPLIT_LOOKAHEAD] {
             log::debug(log_cat, "Changing split datagram lookahead from {} to {}", _send_buffer.split_lookahead, val);
             _send_buffer.split_lookahead = val;
         });
     }
     int Datagrams::get_split_datagram_lookahead() const
     {
-        return loop.call_get([this] { return static_cast<int>(_send_buffer.split_lookahead); });
+        return endpoint.job_queue.call_get([this] { return static_cast<int>(_send_buffer.split_lookahead); });
     }
 
     void Datagrams::send_impl(std::span<const std::byte> data, std::shared_ptr<void> keep_alive)
     {
-        loop.call([this, data, keep_alive = std::move(keep_alive)]() mutable {
+        endpoint.job_queue.call([this, data, keep_alive = std::move(keep_alive)]() mutable {
             if (!_conn)
             {
                 log::debug(log_cat, "Unable to send datagram: connection has gone away");
@@ -122,7 +122,7 @@ namespace oxen::quic
         {
             log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
 
-            assert(datagram.loop.inside());
+            assert(datagram.endpoint.job_queue.inside());
             assert(datagram._conn);
 
             auto idx = dgid >> 2;
