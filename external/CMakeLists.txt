@@ -37,6 +37,8 @@ if (NOT TARGET oxen::logging)
         # Otherwise oxen-logging from the submodule will already publicly provide fmt/spdlog:
         add_library(oxen::logging-fmt ALIAS oxen-logging)
     endif()
+else()
+    add_library(oxen::logging-fmt ALIAS oxen-logging)
 endif()
 
 # oxenc
