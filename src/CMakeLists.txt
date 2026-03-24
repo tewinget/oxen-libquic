@@ -33,7 +33,7 @@ target_link_libraries(quic
     sessiondep::libngtcp2
     sessiondep::libngtcp2_crypto_gnutls
     sessiondep::gnutls
-    oxen::logging-fmt
+    oxen::logging
     libquic_external
     oxenc::oxenc
     sessiondep::libevent_core sessiondep::libevent_pthreads
