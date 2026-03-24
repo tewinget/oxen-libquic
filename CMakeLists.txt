@@ -137,6 +137,8 @@ if(LIBQUIC_BUILD_TESTS OR LIBQUIC_BUILD_SPEEDTEST)
     add_subdirectory(tests)
 endif()
 
+add_library(oxen::quic ALIAS quic)
+
 if(LIBQUIC_INSTALL)
     install(
         DIRECTORY include/oxen ${CMAKE_CURRENT_BINARY_DIR}/include/oxen
