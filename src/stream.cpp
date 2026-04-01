@@ -177,7 +177,8 @@ namespace oxen::quic
     {
         endpoint.job_queue.call([this] {
             _send_fin = true;
-            _conn->packet_io_ready();
+            if (_conn)
+                _conn->packet_io_ready();
         });
     }
 
