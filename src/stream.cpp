@@ -143,6 +143,21 @@ namespace oxen::quic
         return endpoint.job_queue.call_get([this]() { return _paused; });
     }
 
+    uint64_t Stream::acked_bytes() const
+    {
+        return endpoint.job_queue.call_get([this] { return _acked_bytes; });
+    }
+
+    size_t Stream::unacked_bytes() const
+    {
+        return endpoint.job_queue.call_get([this] { return _unacked_size; });
+    }
+
+    std::tuple<uint64_t, size_t, size_t> Stream::get_stats() const
+    {
+        return endpoint.job_queue.call_get([this] { return std::tuple{_acked_bytes, _unacked_size, _unsent_size}; });
+    }
+
     bool Stream::writable() const
     {
         return endpoint.job_queue.call_get([this] { return !(_is_closing || _send_fin || _sent_fin); });
@@ -296,10 +311,11 @@ namespace oxen::quic
     void Stream::acknowledge(size_t bytes)
     {
         log::trace(log_cat, "{} called", __PRETTY_FUNCTION__);
-        log::trace(log_cat, "Acking {} bytes of {}/{} unacked/size", bytes, _unacked_size, size());
+        log::trace(log_cat, "Acking {} bytes of {}/{} unacked/size", bytes, _unacked_size, _total_buffer_size);
 
         assert(bytes <= _unacked_size);
         _unacked_size -= bytes;
+        _acked_bytes += bytes;
 
         // Drop all fully-acked buffers that are no longer needed
         while (bytes && bytes >= user_buffers.front().first.size())
@@ -324,9 +340,7 @@ namespace oxen::quic
             }
         }
 
-#ifndef NDEBUG
-        log::trace(log_cat, "{} bytes acked, {} unacked remaining", bytes, size());
-#endif
+        log::trace(log_cat, "{} bytes acked, {} unacked remaining", bytes, _total_buffer_size);
     }
 
     void Stream::wrote(size_t bytes)
@@ -377,7 +391,7 @@ namespace oxen::quic
         _unsent_size = _total_buffer_size;
         if (_had_notify)
             _notify = true;
-        log::debug(log_cat, "Stream (ID:{}) has {}B in buffer, 0B unacked...", _stream_id, size());
+        log::debug(log_cat, "Stream (ID:{}) has {}B in buffer, 0B unacked...", _stream_id, _total_buffer_size);
     }
 
     std::pair<std::vector<ngtcp2_vec>, bool> Stream::pending(size_t bytes)
@@ -464,7 +478,6 @@ namespace oxen::quic
 
     size_t Stream::unsent_impl() const
     {
-        log::trace(log_cat, "size={}, unacked={}", size(), unacked());
         return _unsent_size;
     }
 

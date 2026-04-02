@@ -176,6 +176,24 @@ namespace oxen::quic
          */
         void resume();
 
+        // Returns the total number of bytes that have been acknowledged by the remote end on this
+        // stream.  This value increases monotonically as data is acked.
+        uint64_t acked_bytes() const;
+
+        // Returns the number of bytes that have been sent on the wire but not yet acked.
+        size_t unacked_bytes() const;
+
+        // Returns a consistent snapshot of {acked, unacked, unsent} byte counts for the stream.
+        // This is equivalent to calling acked_bytes(), unacked_bytes(), and unsent() individually,
+        // but retrieves all three atomically in a single call.
+        // - acked: total bytes confirmed received by the remote (monotonically increasing)
+        // - unacked: bytes written into QUIC packets but not yet acked
+        // - unsent: bytes queued via send() but not yet written into QUIC packets
+        // Useful derived values:
+        // - acked + unacked + unsent = total bytes fed to the stream
+        // - acked + unacked = total bytes sent on the wire
+        std::tuple<uint64_t, size_t, size_t> get_stats() const;
+
         // Returns true if the stream is writeable, i.e. not closing, shutdown and FIN not sent or
         // scheduled.
         bool writable() const;
@@ -267,6 +285,7 @@ namespace oxen::quic
 
         size_t _unsent_size{0};
         size_t _unacked_size{0};
+        uint64_t _acked_bytes{0};  // total acked bytes over the lifetime of the stream
         size_t _current_buffer_index{0};
         size_t _current_buffer_offset{0};
         size_t _total_buffer_size{0};
@@ -295,10 +314,6 @@ namespace oxen::quic
 
         void check_watermark();
         void acknowledge(size_t bytes);
-
-        size_t size() const { return _total_buffer_size; }
-
-        size_t unacked() const { return _unacked_size; }
 
         // Implementations classes for send_chunks()
 
