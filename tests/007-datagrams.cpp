@@ -677,8 +677,8 @@ namespace oxen::quic::test
         // First burst: queue fills and some datagrams are dropped.
         batch_send();
 
-        auto drop_count = test_net.loop()->call_get(
-                [&] { return TestHelper::get_dgram_drop_count(*conn_interface->datagrams()); });
+        auto drop_count =
+                test_net.loop()->call_get([&] { return TestHelper::get_dgram_drop_count(*conn_interface->datagrams()); });
 
         REQUIRE(drop_count > 0);
 
@@ -690,8 +690,8 @@ namespace oxen::quic::test
         // continuously and not just on the first overflow.
         batch_send();
 
-        auto drop_count_2 = test_net.loop()->call_get(
-                [&] { return TestHelper::get_dgram_drop_count(*conn_interface->datagrams()); });
+        auto drop_count_2 =
+                test_net.loop()->call_get([&] { return TestHelper::get_dgram_drop_count(*conn_interface->datagrams()); });
 
         REQUIRE(drop_count_2 > drop_count);
     }
