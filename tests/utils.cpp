@@ -136,6 +136,11 @@ namespace oxen::quic
         return dg.recv_buffer.last_cleared;
     }
 
+    size_t TestHelper::get_dgram_drop_count(Datagrams& dg)
+    {
+        return dg.dgram_drop_count;
+    }
+
     void TestHelper::increment_ref_id(Endpoint& ep, uint64_t by)
     {
         ep._next_rid += by;

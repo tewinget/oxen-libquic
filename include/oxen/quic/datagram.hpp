@@ -346,7 +346,7 @@ namespace oxen::quic
 
         dgram_data_callback dgram_data_cb;
 
-        // Maximum datagram size queued per connection.  Will need tuning.
+        // Maximum bytes queued for sending per connection; see opt::enable_datagrams::queue_limit().
         size_t dgram_queue_limit = 2'000'000;
         // Counts datagrams dropped due to queue limit; logged at debug on the 1st and every 100th drop.
         size_t dgram_drop_count = 0;
