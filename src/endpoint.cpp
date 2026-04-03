@@ -42,7 +42,7 @@ namespace oxen::quic
         _packet_splitting = dc.split_packets;
         _policy = dc.mode;
         _rbufsize = dc.bufsize;
-        _dgram_queue_limit = dc.dgram_queue_limit;
+        _dgram_queue_limit = dc.dgram_queue_limit.value_or(0);
 
         log::trace(
                 log_cat,

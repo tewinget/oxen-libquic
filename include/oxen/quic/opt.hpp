@@ -133,13 +133,20 @@ namespace oxen::quic
             Splitting mode{Splitting::NONE};
             // Note: this is the size of the entire buffer, divided amongst 4 rows
             int bufsize{4096};
-            size_t dgram_queue_limit{std::numeric_limits<size_t>::max()};
+            std::optional<size_t> dgram_queue_limit{std::nullopt};
 
+            // Sets the maximum number of bytes that may be queued for sending on a single
+            // connection's datagram channel.  When the limit is exceeded, incoming datagrams are
+            // silently dropped until the queue drains below the limit again.  A drop counter is
+            // maintained in the connection's Datagrams object for diagnostics.  Pass 0 for
+            // unlimited (not recommended: an unbounded queue can cause severe congestion issues).
+            // If not called, the connection uses its own default.
             enable_datagrams& queue_limit(size_t limit)
             {
                 if (limit == 0)
-                    limit = std::numeric_limits<size_t>::max();
-                dgram_queue_limit = limit;
+                    dgram_queue_limit = std::numeric_limits<size_t>::max();
+                else
+                    dgram_queue_limit = limit;
                 return *this;
             }
 
